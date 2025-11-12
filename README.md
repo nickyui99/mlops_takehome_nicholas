@@ -1,217 +1,462 @@
-# mlops_takehome_nicholas
+# MLOps Take-Home: Iris Classifier
 
-Short, self-contained MLOps take-home project demonstrating reproducible training, evaluation, model versioning, and deployment-ready artifacts.
+Production-ready ML system demonstrating end-to-end MLOps practices: reproducible training, experiment tracking, containerized serving, Kubernetes deployment, and observability.
 
-## Table of contents
-- Project summary
-- Goals
-- Repository layout
-- Quick start
-- Environment (local / Docker)
-- Data management
-- Training & evaluation
-- Experiment tracking & model registry
-- CI / CD and testing
-- Deployment
-- Monitoring & observability
-- Reproducibility checklist
-- Contributing
-- License
+## 📋 Table of Contents
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Repository Structure](#repository-structure)
+- [Quick Start](#quick-start)
+- [Training Pipeline](#training-pipeline)
+- [Model Serving](#model-serving)
+- [Deployment](#deployment)
+- [Monitoring & Observability](#monitoring--observability)
+- [CI/CD](#cicd)
+- [Testing](#testing)
 
-## Project summary
-This repository contains code and configuration to:
-- Prepare data and feature pipelines
-- Train and evaluate a supervised ML model
-- Track experiments and register models
-- Build reproducible artifacts (Docker image, saved model)
-- Provide basic deployment example and CI pipelines
+## 🎯 Overview
 
-Target audience: interviewer reviewing MLOps skills; reviewer should be able to reproduce results locally and understand design decisions quickly.
+This project implements a complete MLOps pipeline for an Iris flower classification model, including:
 
-## Goals
-- Reproducible training runs
-- Clear data provenance and versioning
-- Automated CI/test pipelines
-- Simple deployment path (container + inference endpoint)
-- Demonstrate best practices for experiments and model management
+✅ **Reproducible Training** with MLflow experiment tracking  
+✅ **FastAPI REST API** with Prometheus metrics & structured logging  
+✅ **Kubernetes Deployment** with 3-replica high availability  
+✅ **PostgreSQL Database** for prediction logging  
+✅ **Prometheus + Grafana** monitoring stack  
+✅ **CI/CD Pipelines** with GitHub Actions  
+✅ **Airflow DAG** for workflow orchestration  
+✅ **Docker & Docker Compose** for local development  
 
-## Repository layout (recommended)
-Example file tree (add missing files as needed):
+**Model Details**: Logistic Regression trained on Iris dataset (96%+ accuracy). See [MODEL_CARD.md](MODEL_CARD.md) for full details.
+
+## 🏗️ Architecture
+
 ```
-README.md
-requirements.txt
-environment.yml
-Dockerfile
-docker-compose.yml
-src/
-    data/
-        download.py
-        preprocess.py
-    features/
-        build_features.py
-    train/
-        train.py
-        config.yaml
-    eval/
-        evaluate.py
-    model/
-        predict.py
-        serve.py
-    utils/
-        io.py
-        logging.py
-notebooks/
-    exploration.ipynb
-tests/
-    test_data.py
-    test_train.py
-    test_inference.py
-ci/
-    github-actions/
-        ci.yml
-deploy/
-    k8s/
-    docker/
-dvc.yaml           # optional
-mlruns/            # optional (mlflow)
-README.dev.md
+┌─────────────┐    ┌──────────────┐    ┌───────────────┐
+│   Client    │───▶│  Kubernetes  │───▶│   FastAPI     │
+│             │    │   Service    │    │   (3 pods)    │
+└─────────────┘    └──────────────┘    └───────┬───────┘
+                                               │
+                    ┌──────────────────────────┼──────────────┐
+                    ▼                          ▼              ▼
+              ┌──────────┐              ┌───────────┐  ┌──────────┐
+              │PostgreSQL│              │ MLflow    │  │Prometheus│
+              │(Pred Log)│              │(Model Reg)│  │(Metrics) │
+              └──────────┘              └───────────┘  └──────────┘
 ```
 
-## Quick start (local)
-1. Clone the repo:
-     ```
-     git clone <repo-url>
-     cd mlops_takehome_nicholas
-     ```
-2. Create environment and install:
-     - Conda
-         ```
-         conda env create -f environment.yml
-         conda activate mlops_takehome
-         ```
-     - Or pip
-         ```
-         python -m venv .venv
-         source .venv/bin/activate   # Windows: .venv\Scripts\activate
-         pip install -r requirements.txt
-         ```
-3. Prepare data (example):
-     ```
-     python src/data/download.py --output data/raw
-     python src/data/preprocess.py --input data/raw --output data/processed
-     ```
-4. Run training:
-     ```
-     python src/train/train.py --config src/train/config.yaml --output models/
-     ```
-5. Evaluate:
-     ```
-     python src/eval/evaluate.py --model models/best.pkl --data data/processed/test.csv
-     ```
-6. Start local inference server:
-     ```
-     python src/model/serve.py --model models/best.pkl --port 8080
-     curl -X POST http://localhost:8080/predict -d '{"features":[...]}'
-     ```
+## 📁 Repository Structure
 
-## Environment & dependencies
-- Use pinned versions in requirements.txt or environment.yml.
-- Prefer reproducible builds using Dockerfile:
-    ```
-    docker build -t mlops_takehome:latest .
-    docker run --rm -p 8080:8080 -v $(pwd)/models:/app/models mlops_takehome:latest
-    ```
-- Include a simple Makefile for common commands (env, lint, test, build, run).
+```
+├── app/                      # FastAPI application
+│   ├── main.py              # API endpoints & middleware
+│   ├── model_loader.py      # Model loading logic
+│   ├── model.py             # Model wrapper
+│   └── db.py                # PostgreSQL connection
+├── train/
+│   └── train.py             # Training script with MLflow
+├── tests/
+│   ├── test_api.py          # API unit tests
+│   └── test_lb.py           # Load balancer test
+├── deploy/
+│   ├── k8s/                 # Kubernetes manifests
+│   │   ├── deployment.yaml  # Pod deployment (3 replicas)
+│   │   ├── service.yaml     # ClusterIP service
+│   │   ├── ingress.yaml     # Ingress configuration
+│   │   └── namespace.yaml   # Namespace definition
+│   └── monitoring/          # Prometheus & Grafana configs
+│       ├── prometheus-values.yaml
+│       └── grafana-values.yaml
+├── pipelines/
+│   └── iris_training_dag.py # Airflow DAG
+├── .github/workflows/       # CI/CD pipelines
+│   ├── ci.yml              # Lint, test, build, push
+│   ├── deploy-dev.yml      # Deploy to dev cluster
+│   └── promote-prod.yml    # Promote to production
+├── artifacts/               # Saved model artifacts
+├── dashboards/              # Grafana dashboards (JSON)
+├── sql/                     # Database schemas
+├── Dockerfile               # Container image
+├── docker-compose.yaml      # Multi-service orchestration
+└── requirements.txt         # Python dependencies
+```
 
-## Data management
-- Keep raw data immutable in data/raw
-- Use DVC or equivalent for large datasets:
-    - dvc init
-    - dvc add data/raw/...
-    - dvc remote add -d origin <storage>
-- Document preprocessing steps in src/data/preprocess.py
-- Save hashes / checksums for provenance
+## 🚀 Quick Start
 
-## Training & evaluation
-- Configuration-driven training (YAML/JSON) to capture hyperparameters
-- Example training CLI:
-    ```
-    python src/train/train.py --config src/train/config.yaml --seed 42 --output models/
-    ```
-- Save:
-    - model artifact (pickle / torchscript / ONNX)
-    - training metrics (JSON or MLflow)
-    - training config + git commit hash + data version
-- Evaluation should produce:
-    - Confusion matrix, ROC, precision/recall
-    - Store metrics under outputs/metrics/{run_id}.json
+### Prerequisites
+- Python 3.10+
+- Docker & Docker Compose
+- (Optional) Kubernetes cluster (kind/minikube for local)
 
-## Experiment tracking & model registry
-- Use MLflow (or alternative) for:
-    - Logging params, metrics, artifacts
-    - Tracking runs under mlruns/
-    - Registering the production model
-- Example:
-    ```
-    mlflow run src/train -P config=src/train/config.yaml
-    ```
-- Record:
-    - Run ID, model path, data version, git hash, environment
+### Local Development
 
-## CI / CD and testing
-- Automate:
-    - Linting (flake8/black/isort)
-    - Unit tests (pytest)
-    - Basic integration tests (train for 1 epoch on sample data)
-    - Build Docker image
-- Example GitHub Actions pipeline:
-    - on: [push, pull_request]
-    - jobs: test (setup python, install, run pytest), build (docker build), lint
-- Keep tests fast: use small fixtures and mock external I/O.
+**1. Clone and install dependencies:**
+```bash
+git clone https://github.com/nickyui99/mlops_takehome_nicholas.git
+cd mlops_takehome_nicholas
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # Linux/Mac
+pip install -r requirements.txt
+```
 
-## Deployment
-- Provide 2 simple deployment options:
-    1. Containerized REST API (Flask / FastAPI):
-         - src/model/serve.py exposes /predict and /health endpoints
-         - Dockerfile prepares image with model artifacts baked in or mounted at runtime
-    2. K8s / Inference platform (KServe, Azure ML, SageMaker):
-         - Provide example manifest or deployment script under deploy/
-- For production:
-    - Use model registry to retrieve the production version
-    - Ensure health checks, logging, and metrics scraping endpoints
+**2. Train the model:**
+```bash
+python train/train.py
+```
+Output:
+```
+✅ Training successful!
+   Run ID: abc123...
+   Accuracy: 0.9667
+   Local model saved to: artifacts/iris-classifier/
+```
 
-## Monitoring & observability
-- Expose basic metrics: request latency, error rate, input distribution drift
-- Integrate with Prometheus + Grafana or cloud monitoring
-- Log structured traces and errors to centralized storage (ELK/Datadog)
+**3. Start API with Docker Compose:**
+```bash
+docker-compose up --build
+```
 
-## Security & governance
-- Avoid storing secrets in repo; use environment variables / secret manager
-- Use least privilege for cloud resources
-- Validate inputs at the model boundary (schema checks)
+**4. Test the API:**
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sepal_length": 5.1,
+    "sepal_width": 3.5,
+    "petal_length": 1.4,
+    "petal_width": 0.2
+  }'
+```
 
-## Reproducibility checklist
-- [ ] Code pinned to git commit
-- [ ] Environment captured (requirements.yml / Dockerfile)
-- [ ] Data versioned (DVC or snapshot)
-- [ ] Random seeds set and logged
-- [ ] Metrics logged and artifacts stored
-- [ ] CI validates minimal training + inference
+Response:
+```json
+{
+  "prediction": "setosa",
+  "latency_ms": 12.34,
+  "model_version": "iris-v1"
+}
+```
 
-## Contributing
-- Follow the coding style and add tests for any new functionality
-- Run:
-    ```
-    make lint
-    make test
-    ```
-- Create PR with description of changes, linked issue, and sample outputs
+## 🔬 Training Pipeline
 
-## Notes for reviewers
-- Look for: reproducible end-to-end run, clear logging of provenance, concise CI pipeline, and a simple but functional deployment path.
-- The repository is intentionally minimal; extend with experiments, hyperparameter tuning (Optuna), or inference scaling as needed.
+### Overview
+Training script uses MLflow for experiment tracking and model versioning.
 
-## License
-Add a license file (e.g., MIT) or specify license here.
+**Training script:** `train/train.py`
 
--- End of README --
+**Key features:**
+- Loads Iris dataset from scikit-learn (deterministic, versioned by sklearn package)
+- Trains Logistic Regression with fixed random seed (42)
+- Logs hyperparameters: `test_size`, `random_state`, `max_iter`
+- Logs metrics: `accuracy`
+- Saves model artifacts to `artifacts/iris-classifier/`
+- Tracks experiments in SQLite backend (`mlflow.db`)
+
+### Manual Training
+```bash
+python train/train.py
+```
+
+### Automated Training (Airflow)
+```bash
+# Start Airflow (requires Airflow installation)
+airflow standalone
+
+# Trigger DAG
+airflow dags trigger iris_training_pipeline
+```
+
+**DAG Steps:**
+1. **Fetch Data**: Load Iris dataset
+2. **Train Model**: Execute training with MLflow logging
+3. **Evaluate**: Validate accuracy > 90%
+4. **Register**: Promote model if validation passes
+
+### Model Versioning
+- **MLflow Registry**: Models registered as `iris-classifier`
+- **Artifacts**: Portable model saved to `artifacts/` directory
+- **Run ID**: Unique identifier for reproducibility
+- **Data Version**: Tracked via sklearn package version in `requirements.txt`
+
+## 🌐 Model Serving
+
+### API Endpoints
+
+#### `POST /predict`
+Predict iris species from flower measurements.
+
+**Request:**
+```json
+{
+  "sepal_length": 5.1,
+  "sepal_width": 3.5,
+  "petal_length": 1.4,
+  "petal_width": 0.2
+}
+```
+
+**Response:**
+```json
+{
+  "prediction": "setosa",
+  "latency_ms": 12.34,
+  "model_version": "iris-v1"
+}
+```
+
+#### `GET /healthz`
+Health check endpoint.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "model_version": "iris-v1"
+}
+```
+
+#### `GET /metrics`
+Prometheus metrics for monitoring.
+
+**Metrics exposed:**
+- `http_requests_total` - Total request count by endpoint & status
+- `http_request_duration_seconds` - Request latency histogram
+
+### Features
+- **Input Validation**: Pydantic models enforce schema
+- **Structured Logging**: JSON logs with request IDs
+- **Database Logging**: All predictions saved to PostgreSQL
+- **Prometheus Metrics**: Custom counters & histograms
+- **Error Handling**: Graceful degradation with proper status codes
+
+## 🚢 Deployment
+
+### Docker Deployment
+
+**Build image:**
+```bash
+docker build -t iris-predictor:latest .
+```
+
+**Run container:**
+```bash
+docker run -p 8000:8000 iris-predictor:latest
+```
+
+**Docker Compose (with PostgreSQL):**
+```bash
+docker-compose up -d
+```
+
+### Kubernetes Deployment
+
+**Prerequisites:**
+- Kubernetes cluster (kind/minikube/GKE/EKS/AKS)
+- kubectl configured
+
+**Deploy full stack:**
+```bash
+# Create namespace
+kubectl apply -f deploy/k8s/namespace.yaml
+
+# Deploy PostgreSQL (using Helm)
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm install postgres bitnami/postgresql -n mlops-dev \
+  --set auth.postgresPassword=postgres,auth.database=mlops
+
+# Deploy application
+kubectl apply -f deploy/k8s/
+
+# Verify deployment
+kubectl get pods -n mlops-dev
+kubectl get svc -n mlops-dev
+```
+
+**Configuration:**
+- **Replicas**: 3 pods for high availability
+- **Resources**: 128Mi-256Mi memory, 100m-200m CPU
+- **Health checks**: Liveness & readiness probes on `/healthz`
+- **Load balancing**: Round-robin across pods
+
+**Access the service:**
+```bash
+# Port forward
+kubectl port-forward svc/iris-predictor-svc 8000:80 -n mlops-dev
+
+# Test
+curl http://localhost:8000/healthz
+```
+
+### Monitoring Stack
+
+**Deploy Prometheus & Grafana:**
+```bash
+# Add Helm repos
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+
+# Install Prometheus
+helm install prometheus prometheus-community/prometheus \
+  -n mlops-dev -f deploy/monitoring/prometheus-values.yaml
+
+# Install Grafana
+helm install grafana grafana/grafana \
+  -n mlops-dev -f deploy/monitoring/grafana-values.yaml
+
+# Get Grafana password
+kubectl get secret grafana -n mlops-dev -o jsonpath="{.data.admin-password}" | base64 --decode
+
+# Port forward Grafana
+kubectl port-forward svc/grafana 3000:80 -n mlops-dev
+```
+
+**Import dashboard:**
+- Open http://localhost:3000
+- Login with `admin` / (password from above)
+- Import `dashboards/iris-dashboard.json`
+
+## 📊 Monitoring & Observability
+
+### Metrics Collection
+- **Prometheus** scrapes `/metrics` endpoint every 15s
+- **Custom metrics** tracked:
+  - `http_requests_total` - Request counter by endpoint & status
+  - `http_request_duration_seconds` - Latency histogram
+
+### Alerting
+Configured alerts in `deploy/monitoring/prometheus-values.yaml`:
+- **HighErrorRate**: Triggers when error rate > 5% for 1 minute
+
+### Logging
+- **Structured JSON logs** to stdout
+- Each request logged with:
+  - `request_id` (UUID)
+  - `model_version`
+  - `pod_name` (for debugging in K8s)
+  - `latency_ms`
+  - `input` & `prediction`
+
+**View logs:**
+```bash
+# Docker Compose
+docker-compose logs -f iris-api
+
+# Kubernetes
+kubectl logs -f deployment/iris-predictor -n mlops-dev
+```
+
+### Database Tracking
+All predictions stored in PostgreSQL:
+```sql
+SELECT * FROM predictions ORDER BY timestamp DESC LIMIT 10;
+```
+
+Schema includes: `request_id`, `model_version`, `latency_ms`, `input_data`, `prediction`, `timestamp`
+
+## 🔄 CI/CD
+
+### GitHub Actions Workflows
+
+#### **1. CI Pipeline** (`.github/workflows/ci.yml`)
+Triggers on: `push`, `pull_request` to `main`
+
+**Steps:**
+1. Lint code with `ruff`
+2. Run unit tests with `pytest`
+3. Build Docker image
+4. Push image to GitHub Container Registry (GHCR)
+
+#### **2. Deploy to Dev** (`.github/workflows/deploy-dev.yml`)
+Triggers on: `push` to `main`
+
+**Steps:**
+1. Set up Kind cluster
+2. Deploy PostgreSQL via Helm
+3. Apply Kubernetes manifests
+4. Run smoke tests
+
+#### **3. Promote to Prod** (`.github/workflows/promote-prod.yml`)
+Triggers: Manual (`workflow_dispatch`)
+
+**Steps:**
+1. Deploy to production cluster
+2. Run post-deployment health checks
+
+### Secrets Management
+Required GitHub secrets:
+- `GITHUB_TOKEN` (automatic)
+
+For production:
+- Use Kubernetes secrets for DB credentials
+- Mount secrets as environment variables
+- Never commit credentials to repo
+
+## 🧪 Testing
+
+### Run Tests Locally
+```bash
+# Unit tests
+pytest tests/test_api.py -v
+
+# Load balancer test (requires running service)
+python tests/test_lb.py
+```
+
+### Test Coverage
+- **API Tests**: Validate `/predict` and `/healthz` endpoints
+- **Model Loading**: Verify model loads correctly
+- **Input Validation**: Test Pydantic schema enforcement
+- **Load Balancing**: Verify requests distribute across pods
+
+## ✅ Reproducibility Checklist
+
+- [x] **Code versioned**: Git repository with commit history
+- [x] **Environment captured**: `requirements.txt` + `Dockerfile`
+- [x] **Data versioned**: Iris dataset versioned via sklearn package (pinned in requirements)
+- [x] **Random seeds fixed**: `random_state=42` in training script
+- [x] **Metrics logged**: MLflow tracks accuracy and all parameters
+- [x] **Artifacts stored**: Models saved to `artifacts/` and MLflow registry
+- [x] **CI validates**: GitHub Actions runs tests on every commit
+- [x] **Model card**: Documentation in `MODEL_CARD.md`
+
+## 🔐 Security & Best Practices
+
+- ✅ Non-root user in Docker container
+- ✅ Input validation with Pydantic
+- ✅ Resource limits in Kubernetes
+- ✅ Secrets management via environment variables
+- ✅ Structured logging (no sensitive data in logs)
+- ⚠️ **TODO**: Move DB credentials to K8s secrets for production
+
+## 📝 Notes for Reviewers
+
+**Design Decisions:**
+1. **SQLite for MLflow**: Simple local setup; would use remote tracking server in production
+2. **No DVC**: Iris dataset is embedded in sklearn and deterministic; DVC not needed for this scale
+3. **Logistic Regression**: Simple, interpretable baseline model
+4. **3 Replicas**: Balances availability with resource usage
+
+**Production Enhancements:**
+- Implement model A/B testing framework
+- Add data drift detection using prediction logs
+- Set up centralized log aggregation (ELK/Splunk)
+- Implement model retraining pipeline
+- Add horizontal pod autoscaling (HPA)
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Run linting: `ruff check .`
+5. Submit PR with clear description
+
+## 📄 License
+
+MIT License - see LICENSE file for details.
+
+---
+
+**Built with**: Python, FastAPI, MLflow, scikit-learn, Docker, Kubernetes, Prometheus, Grafana, PostgreSQL, Airflow

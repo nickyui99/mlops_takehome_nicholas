@@ -1,25 +1,15 @@
-# Ignore a specific sensitive file
-sensitive_file
-
-# Environment and credential files
+# Python
+__pycache__/
+*.pyc
+.venv/
 .env
-.env.*
-*.env
-credentials.json
-service-account.json
-google-credentials.json
-aws_credentials
-*.pem
-*.key
-*.p12
-id_rsa
-id_dsa
 
-# Secrets and config
-secrets.*
-secrets.yml
-secrets.yaml
-config.ini
+# MLflow
+mlartifacts/
 
-# Misc
-.DS_Store
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,25 @@
+# Keep secrets and dev artifacts out of Docker build context
+.env
+*.env
+.env.*
+
+# Python cache and venv
+__pycache__/
+*.pyc
+.venv/
+
+# MLflow and local artifacts
+mlruns/
+mlflow.db
+artifacts/
+.trash/
+
+# Git & editor files
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+
+# Logs
+*.log

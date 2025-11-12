@@ -1,0 +1,15 @@
+# docker-compose.dev.yaml
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mlops
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - mlops_pgdata:/var/lib/postgresql/data
+
+volumes:
+  mlops_pgdata:

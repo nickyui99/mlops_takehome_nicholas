@@ -1,0 +1,40 @@
+# .github/workflows/deploy-dev.yml
+name: Deploy Dev
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Kind
+      uses: helm/kind-action@v1.2.0
+      with:
+        cluster_name: mlops-dev
+        config: kind-config.yaml  # optional
+
+    - name: Deploy Postgres (Helm)
+      run: |
+        helm repo add bitnami https://charts.bitnami.com/bitnami
+        helm install postgres bitnami/postgresql -n mlops-dev --create-namespace \
+          --set auth.postgresPassword=postgres,auth.database=mlops
+
+    - name: Deploy App
+      run: |
+        kubectl apply -f deploy/k8s/ -n mlops-dev
+
+    - name: Wait for pods
+      run: |
+        kubectl wait --for=condition=ready pod -l app=iris-predictor -n mlops-dev --timeout=120s
+
+    - name: Smoke test
+      run: |
+        kubectl port-forward svc/iris-predictor-svc 8000:80 -n mlops-dev &
+        sleep 10
+        curl -sf -X POST http://localhost:8000/predict \
+          -H "Content-Type: application/json" \
+          -d '{"sepal_length":5.1,"sepal_width":3.5,"petal_length":1.4,"petal_width":0.2}'

@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mlops
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  iris-api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: postgres
+      MODEL_NAME: iris-classifier
+      MODEL_VERSION: "1"
+    depends_on:
+      - postgres
+    volumes:
+      - ./mlruns:/app/mlruns  # so MLflow can read models
+
+volumes:
+  postgres-data:

@@ -1,0 +1,22 @@
+artifact_path: file:///C:/Users/nicho/My Drive/Interview preparation/mlops_takehome_nicholas/mlruns/1/models/m-b0bde98d62f742b2a1077968762405c3/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.11.9
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.7.2
+mlflow_version: 3.6.0
+model_id: m-b0bde98d62f742b2a1077968762405c3
+model_size_bytes: 835
+model_uuid: m-b0bde98d62f742b2a1077968762405c3
+prompts: null
+run_id: 69c1ff60daf34c2d81e9cdfa6f89028e
+utc_time_created: '2025-11-12 06:33:29.662719'

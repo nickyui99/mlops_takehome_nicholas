@@ -1,0 +1,29 @@
+# .github/workflows/promote-prod.yml
+name: Promote to Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image SHA or tag'
+        required: true
+        default: 'latest'
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Kind (prod cluster)
+      uses: helm/kind-action@v1.2.0
+      with:
+        cluster_name: mlops-prod
+
+    # ... deploy prod version (blue/green) ...
+
+    - name: Post-deploy smoke test
+      run: |
+        kubectl port-forward svc/iris-predictor-prod 8000:80 -n mlops-prod &
+        sleep 10
+        curl -sf http://localhost:8000/healthz

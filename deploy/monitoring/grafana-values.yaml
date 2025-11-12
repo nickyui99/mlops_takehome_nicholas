@@ -1,0 +1,20 @@
+grafana:
+  adminPassword: admin
+  service:
+    type: NodePort  # or ClusterIP (Kind uses localhost)
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      iris-dashboard:
+        url: https://raw.githubusercontent.com/your-repo/main/dashboards/iris-dashboard.json

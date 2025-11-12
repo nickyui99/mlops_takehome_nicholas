@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+scikit-learn
+joblib
+pydantic
+mlflow>=3.6.0          
+psycopg2-binary   
+apache-airflow==2.10.1
+prometheus_client
+psycopg2-binary
+structlog

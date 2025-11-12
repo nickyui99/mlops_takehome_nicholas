@@ -13,3 +13,9 @@ mlartifacts/
 # IDE
 .vscode/
 .idea/
+
+# Environment files (keep local only)
+.env
+.env.*
+*.env
+!.env.example

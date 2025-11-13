@@ -189,21 +189,72 @@ docker compose down
 
 If you have a Kubernetes cluster available (Docker Desktop K8s, kind, minikube, or cloud):
 
+**Prerequisites**:
 ```bash
-# Create namespace
+# Ensure you're using the correct cluster context
+kubectl config get-contexts
+
+# Switch to docker-desktop (if using Docker Desktop)
+kubectl config use-context docker-desktop
+
+# Or switch to your preferred cluster
+kubectl config use-context <your-cluster-name>
+
+# Verify cluster is ready
+kubectl get nodes
+```
+
+**Deployment Steps**:
+```bash
+# 1. Build and verify image (for local clusters)
+docker build -t iris-predictor:latest .
+docker images | grep iris-predictor
+
+# 2. Create namespace
 kubectl apply -f deploy/k8s/namespace.yaml
 
-# Deploy PostgreSQL
+# 3. Deploy PostgreSQL using Helm
 helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
+# Windows PowerShell:
+helm install postgres bitnami/postgresql -n mlops-dev `
+  --set auth.postgresPassword=postgres `
+  --set auth.database=mlops
+
+# Linux/Mac:
 helm install postgres bitnami/postgresql -n mlops-dev \
   --set auth.postgresPassword=postgres,auth.database=mlops
 
-# Deploy application
-kubectl apply -f deploy/k8s/
+# 4. Wait for PostgreSQL to be ready
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql -n mlops-dev --timeout=300s
 
-# Verify
+# 5. Deploy application
+kubectl apply -f deploy/k8s/deployment.yaml
+kubectl apply -f deploy/k8s/service.yaml
+
+# 6. Verify deployment
 kubectl get pods -n mlops-dev
 kubectl get svc -n mlops-dev
+
+# 7. Access the application (port forward)
+kubectl port-forward svc/iris-predictor-svc 8000:8000 -n mlops-dev
+```
+
+**Test the Kubernetes deployment**:
+```powershell
+# In a new terminal - Health check
+curl http://localhost:8000/healthz
+
+# Make prediction
+$body = @{
+    sepal_length=5.1
+    sepal_width=3.5
+    petal_length=1.4
+    petal_width=0.2
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
 ```
 
 **Kubernetes Features**:

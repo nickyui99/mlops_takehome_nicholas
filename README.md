@@ -93,9 +93,8 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 ### Prerequisites
 - Python 3.10+
 - Docker & Docker Compose
-- Kubernetes cluster (Docker Desktop/kind/minikube for local)
 
-### Local Development with Docker Compose
+**Note**: This project uses **Docker Compose** for local development and orchestration. Kubernetes deployment files are provided for production use but are optional for local testing.
 
 **1. Clone and setup:**
 ```bash
@@ -136,25 +135,60 @@ Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -C
 
 ### A) Load Balancer (must-have)
 
-**Implementation**: NGINX reverse proxy in `docker-compose.yaml`
+**Implementation**: NGINX reverse proxy with Docker Compose scaling
 
 - **Configuration**: `nginx.conf` distributes traffic across API replicas
-- **Round-robin** load balancing between 3 backend pods
+- **Scaling**: Docker Compose configured with 3 replicas (`deploy.replicas: 3`)
+- **Load balancing**: NGINX automatically distributes requests across instances
 - **Health checks**: `/healthz` endpoint monitoring
 - **Testing**: `tests/test_lb.py` verifies distribution
 
 **Verification**:
 ```bash
-# Check distribution across pods
+# Start services with 3 replicas
+docker compose up --build -d
+
+# Verify 3 instances running
+docker compose ps
+
+# Test load distribution
 python tests/test_lb.py
 # Expected: Requests distributed to different pod_names
 ```
 
 ### B) Orchestration
 
-**Implementation**: Kubernetes deployment with 3 replicas
+**Implementation**: Docker Compose with multi-service orchestration and scaling
 
-**Deploy to Kubernetes**:
+**Features**:
+- **3 replicas** of the API service for high availability
+- **Multi-container** orchestration (PostgreSQL, API, NGINX)
+- **Service discovery** and networking
+- **Dependency management** (API depends on PostgreSQL)
+- **Load balancing** via NGINX reverse proxy
+
+**Running the orchestrated stack**:
+```bash
+# Start all services with 3 API replicas
+docker compose up --build -d
+
+# View running services
+docker compose ps
+
+# Scale up/down if needed
+docker compose up --scale iris-api=5 -d
+
+# Check logs
+docker compose logs -f iris-api
+
+# Stop all services
+docker compose down
+```
+
+**Optional: Kubernetes Deployment** (for production environments)
+
+If you have a Kubernetes cluster available (Docker Desktop K8s, kind, minikube, or cloud):
+
 ```bash
 # Create namespace
 kubectl apply -f deploy/k8s/namespace.yaml
@@ -172,7 +206,7 @@ kubectl get pods -n mlops-dev
 kubectl get svc -n mlops-dev
 ```
 
-**Features**:
+**Kubernetes Features**:
 - 3 replica pods for high availability
 - Resource limits (128Mi-256Mi memory, 100m-200m CPU)
 - Liveness & readiness probes
@@ -204,8 +238,16 @@ kubectl get svc -n mlops-dev
 **Metrics Collection**:
 - Prometheus scrapes `/metrics` endpoint every 15s
 - Custom metrics: `http_requests_total`, `http_request_duration_seconds`
+- FastAPI exposes metrics via `/metrics` endpoint
 
-**Deploy monitoring stack**:
+**Local Testing**:
+```bash
+# Check metrics endpoint
+curl http://localhost:8000/metrics
+```
+
+**Optional: Deploy monitoring stack** (requires Kubernetes cluster)
+
 ```bash
 # Install Prometheus
 helm install prometheus prometheus-community/prometheus \
@@ -310,18 +352,29 @@ kubectl autoscale deployment iris-predictor --cpu-percent=80 --min=3 --max=10 -n
 - Docker images tagged with `latest` and `sha-<commit>`
 - Git tags for release versions
 
-**Rollback procedure**:
+**Rollback procedure (Docker Compose)**:
+```bash
+# Rollback to specific image version
+docker compose down
+docker tag ghcr.io/nickyui99/iris-predictor:sha-abc123 iris-predictor:latest
+docker compose up -d
+
+# Or pull and use specific version
+docker pull ghcr.io/nickyui99/iris-predictor:sha-abc123
+docker tag ghcr.io/nickyui99/iris-predictor:sha-abc123 iris-predictor:latest
+docker compose up -d
+```
+
+**Rollback procedure (Kubernetes)** - if using K8s deployment:
 ```bash
 # List available versions
-docker images ghcr.io/nickyui99/iris-predictor
+kubectl get rs -n mlops-dev
 
 # Rollback to previous version
-kubectl set image deployment/iris-predictor \
-  iris-predictor=ghcr.io/nickyui99/iris-predictor:sha-abc123 \
-  -n mlops-dev
-
-# Or rollback to previous deployment
 kubectl rollout undo deployment/iris-predictor -n mlops-dev
+
+# Rollback to specific revision
+kubectl rollout undo deployment/iris-predictor --to-revision=2 -n mlops-dev
 
 # Check rollout status
 kubectl rollout status deployment/iris-predictor -n mlops-dev

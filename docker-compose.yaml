@@ -22,6 +22,8 @@ services:
     volumes:
       - ./artifacts:/app/artifacts  # Mount local artifacts with metadata
       - ./mlruns:/app/mlruns  # so MLflow can read models
+    deploy:
+      replicas: 3  # ✅ Run 3 instances for load balancing
 
   nginx:
     image: nginx:alpine

@@ -78,7 +78,10 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 ├── sql/                     # Database schemas
 ├── Dockerfile               # Container image
 ├── docker-compose.yaml      # Multi-service orchestration
-└── requirements.txt         # Python dependencies
+├── docker-compose.airflow.yaml  # Airflow setup (Docker)
+├── requirements.txt         # Python dependencies
+├── AIRFLOW_SETUP.md         # Airflow documentation
+└── MODEL_CARD.md            # Model documentation
 ```
 
 ## 🚀 Quick Start
@@ -87,6 +90,7 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 - Python 3.10+
 - Docker & Docker Compose
 - (Optional) Kubernetes cluster (kind/minikube for local)
+- **Windows Users**: Docker Desktop with WSL2 backend for Airflow support
 
 ### ⚙️ Configuration (.env)
 Create a `.env` file in the project root to override defaults as needed. The app has safe defaults and will work with Docker Compose out of the box.
@@ -186,9 +190,38 @@ python train/train.py
 ```
 
 ### Automated Training (Airflow)
+
+**⚠️ Windows Users**: Airflow doesn't support native Windows installation. Use Docker instead (see below).
+
+**Using Docker (Recommended for Windows):**
 ```bash
-# Start Airflow (requires Airflow installation)
-airflow standalone
+# Start Airflow containers
+cd mlops_takehome_nicholas
+docker compose -f docker-compose.airflow.yaml up -d
+
+# Wait ~30 seconds for initialization, then access Web UI
+# Open: http://localhost:8080
+# Login: admin / admin
+
+# Trigger DAG via CLI
+docker exec airflow-webserver airflow dags trigger iris_training_pipeline
+
+# Check DAG status
+docker exec airflow-webserver airflow dags list-runs -d iris_training_pipeline
+
+# Stop Airflow
+docker compose -f docker-compose.airflow.yaml down
+```
+
+**Using Native Airflow (Linux/Mac/WSL only):**
+```bash
+# Initialize Airflow
+export AIRFLOW_HOME=~/airflow
+airflow db init
+
+# Start services
+airflow webserver --port 8080 &
+airflow scheduler &
 
 # Trigger DAG
 airflow dags trigger iris_training_pipeline
@@ -199,6 +232,8 @@ airflow dags trigger iris_training_pipeline
 2. **Train Model**: Execute training with MLflow logging
 3. **Evaluate**: Validate accuracy > 90%
 4. **Register**: Promote model if validation passes
+
+**📖 Detailed Setup**: See [AIRFLOW_SETUP.md](AIRFLOW_SETUP.md) for complete instructions, troubleshooting, and CLI reference.
 
 ### Model Versioning & Tracking
 - **Artifacts (default path)**: Portable model saved to `artifacts/iris-classifier/` and loaded by the API. This works without running an MLflow server.

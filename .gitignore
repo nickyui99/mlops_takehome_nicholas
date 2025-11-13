@@ -7,6 +7,12 @@ __pycache__/
 # MLflow
 mlartifacts/
 
+# Airflow
+airflow-data/
+airflow_home/
+*.db
+*.pid
+
 # Logs
 *.log
 

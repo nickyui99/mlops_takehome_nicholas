@@ -88,7 +88,33 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 - Docker & Docker Compose
 - (Optional) Kubernetes cluster (kind/minikube for local)
 
+### ⚙️ Configuration (.env)
+Create a `.env` file in the project root to override defaults as needed. The app has safe defaults and will work with Docker Compose out of the box.
+
+```env
+# Database (matches docker compose postgres service)
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=mlops
+DB_USER=postgres
+DB_PASSWORD=postgres
+
+# Model loading
+# By default the server loads the local artifact bundle saved by the trainer
+MODEL_URI=artifacts/iris-classifier
+MODEL_NAME=iris-classifier
+MODEL_VERSION=1
+
+# MLflow tracking (optional for local dev)
+# For simple local runs, you can leave this out. The trainer saves to artifacts/.
+# If you run an MLflow server, set your client(s) to point at it instead.
+# Example server: mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root file:./mlruns
+# MLFLOW_TRACKING_URI=http://localhost:5000
+```
+
 ### Local Development
+
+> Compose topology: NGINX acts as a reverse proxy on port 8000 (host) → forwards to `iris-api:8000` (app). Hitting http://localhost:8000 will go through NGINX.
 
 **1. Clone and install dependencies:**
 ```bash
@@ -114,7 +140,7 @@ Output:
 
 **3. Start API with Docker Compose:**
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 **4. Test the API:**
@@ -134,7 +160,8 @@ Response:
 {
   "prediction": "setosa",
   "latency_ms": 12.34,
-  "model_version": "iris-v1"
+  "model_version": "v2025xxxx_xxxxxx",
+  "pod_name": "local-dev"
 }
 ```
 
@@ -173,9 +200,24 @@ airflow dags trigger iris_training_pipeline
 3. **Evaluate**: Validate accuracy > 90%
 4. **Register**: Promote model if validation passes
 
-### Model Versioning
-- **MLflow Registry**: Models registered as `iris-classifier`
-- **Artifacts**: Portable model saved to `artifacts/` directory
+### Model Versioning & Tracking
+- **Artifacts (default path)**: Portable model saved to `artifacts/iris-classifier/` and loaded by the API. This works without running an MLflow server.
+- **MLflow Tracking**: Local runs log to a SQLite DB (`mlflow.db`).
+- **Registry (optional)**: To use the MLflow Model Registry, run an MLflow tracking server and point both training and serving to it. Example:
+
+  ```bash
+  mlflow server \
+    --backend-store-uri sqlite:///mlflow.db \
+    --default-artifact-root file:./mlruns \
+    --host 0.0.0.0 --port 5000
+  ```
+
+  Then set your client(s) accordingly (PowerShell):
+
+  ```powershell
+  $env:MLFLOW_TRACKING_URI="http://localhost:5000"
+  ```
+
 - **Run ID**: Unique identifier for reproducibility
 - **Data Version**: Tracked via sklearn package version in `requirements.txt`
 
@@ -201,7 +243,8 @@ Predict iris species from flower measurements.
 {
   "prediction": "setosa",
   "latency_ms": 12.34,
-  "model_version": "iris-v1"
+  "model_version": "v2025xxxx_xxxxxx",
+  "pod_name": "local-dev"
 }
 ```
 
@@ -212,7 +255,7 @@ Health check endpoint.
 ```json
 {
   "status": "ok",
-  "model_version": "iris-v1"
+  "model_version": "v2025xxxx_xxxxxx"
 }
 ```
 
@@ -282,10 +325,21 @@ kubectl get svc -n mlops-dev
 **Access the service:**
 ```bash
 # Port forward
-kubectl port-forward svc/iris-predictor-svc 8000:80 -n mlops-dev
+kubectl port-forward svc/iris-predictor-svc 8000:8000 -n mlops-dev
 
 # Test
 curl http://localhost:8000/healthz
+```
+
+> Ingress: To expose via Ingress, ensure an Ingress Controller (e.g., NGINX Ingress) is installed.
+
+```bash
+# Install NGINX Ingress Controller (example)
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
+
+# Apply ingress
+kubectl apply -f deploy/k8s/ingress.yaml
 ```
 
 ### Monitoring Stack
@@ -340,7 +394,7 @@ Configured alerts in `deploy/monitoring/prometheus-values.yaml`:
 **View logs:**
 ```bash
 # Docker Compose
-docker-compose logs -f iris-api
+docker compose logs -f iris-api
 
 # Kubernetes
 kubectl logs -f deployment/iris-predictor -n mlops-dev
@@ -366,6 +420,15 @@ Triggers on: `push`, `pull_request` to `main`
 2. Run unit tests with `pytest`
 3. Build Docker image
 4. Push image to GitHub Container Registry (GHCR)
+
+CI to GHCR notes:
+- Ensure the workflow has `permissions: packages: write`.
+- Login to GHCR before pushing, e.g.:
+
+```yaml
+- name: Login to GHCR
+  run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+```
 
 #### **2. Deploy to Dev** (`.github/workflows/deploy-dev.yml`)
 Triggers on: `push` to `main`
@@ -408,6 +471,10 @@ python tests/test_lb.py
 - **Model Loading**: Verify model loads correctly
 - **Input Validation**: Test Pydantic schema enforcement
 - **Load Balancing**: Verify requests distribute across pods
+
+### Load Balancer Test
+
+`tests/test_lb.py` is designed to demonstrate distribution across multiple replicas. Run it after deploying to Kubernetes with 3 replicas (as defined in `deploy/k8s/deployment.yaml`) or after setting up a load-balanced multi-replica environment. In plain Docker Compose with a single `iris-api` instance, all responses will show the same `pod_name`.
 
 ## ✅ Reproducibility Checklist
 

@@ -13,6 +13,9 @@ mlruns/
 mlflow.db
 .trash/
 
+# Airflow data and logs (not needed in production container)
+airflow-data/
+
 # Git & editor files
 .git/
 .gitignore
@@ -22,3 +25,16 @@ mlflow.db
 
 # Logs
 *.log
+
+# Test files and documentation (not needed in production)
+tests/
+*.md
+dashboards/
+deploy/
+
+# Docker compose files (not needed inside container)
+docker-compose*.yaml
+Dockerfile
+
+# Airflow pipelines (only needed in Airflow, not in API container)
+pipelines/

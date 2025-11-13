@@ -14,6 +14,9 @@ x-airflow-common: &airflow-common
     - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
     - MLFLOW_TRACKING_URI=sqlite:////opt/airflow/mlflow.db
     - PYTHONPATH=/opt/airflow:/opt/airflow/dags
+    - GIT_PYTHON_REFRESH=quiet
+    - AIRFLOW__SCHEDULER__JOB_HEARTBEAT_SEC=10
+    - AIRFLOW__CORE__KILLED_TASK_CLEANUP_TIME=300
   volumes:
     - ./pipelines:/opt/airflow/dags
     - ./train:/opt/airflow/train

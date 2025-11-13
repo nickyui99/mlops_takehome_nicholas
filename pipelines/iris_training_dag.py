@@ -1,5 +1,5 @@
 # /pipelines/iris_training_dag.py
-from datetime import datetime
+from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from pathlib import Path
@@ -12,8 +12,17 @@ from train import train_model  # your existing function
 
 DAG_ID = "iris_training_pipeline"
 
+# Default args with retries and timeouts
+default_args = {
+    'owner': 'airflow',
+    'retries': 1,
+    'retry_delay': timedelta(minutes=1),
+    'execution_timeout': timedelta(minutes=10),
+}
+
 with DAG(
     dag_id=DAG_ID,
+    default_args=default_args,
     start_date=datetime(2025, 1, 1),
     schedule=None,  # manual trigger
     catchup=False,
@@ -29,30 +38,109 @@ with DAG(
         return "data_ready"
 
     def train_task(**context):
-        run_id = train_model()  # this logs to MLflow
+        # Suppress output by redirecting to subprocess
+        import subprocess
+        import sys
+        
+        # Run training in a subprocess to isolate logging
+        result = subprocess.run(
+            [sys.executable, "-c", 
+             "import sys; sys.path.insert(0, '/opt/airflow/train'); from train import train_model; print(train_model(), end='')"],
+            capture_output=True,
+            text=True,
+            cwd="/opt/airflow"
+        )
+        
+        if result.returncode != 0:
+            print(f"Error: {result.stderr}")
+            raise RuntimeError(f"Training failed with error: {result.stderr}")
+        
+        # Extract just the run_id (last line of output)
+        run_id = result.stdout.strip().split('\n')[-1]
+        print(f"✅ Training completed. Run ID: {run_id}")
+        
         # Push run_id to XCom for next task
         context["task_instance"].xcom_push(key="run_id", value=run_id)
         return run_id
 
     def evaluate_task(**context):
+        # Isolate MLflow operations in subprocess to avoid log processing issues
+        import subprocess
+        import sys
+        
         run_id = context["task_instance"].xcom_pull(task_ids="train_model", key="run_id")
         print(f"Evaluating run: {run_id}")
-        # In real life: compute drift, test set metrics, etc.
-        # For now: just confirm it exists in MLflow
-        import mlflow
-        run = mlflow.get_run(run_id)
-        accuracy = run.data.metrics.get("accuracy")
-        print(f"Accuracy from MLflow: {accuracy}")
-        if accuracy is None or accuracy < 0.9:
-            raise ValueError("Model accuracy too low!")
+        
+        # Run evaluation in subprocess
+        result = subprocess.run(
+            [sys.executable, "-c", f"""
+import sys
+sys.path.insert(0, '/opt/airflow/train')
+import mlflow
+import logging
+logging.getLogger('mlflow').setLevel(logging.CRITICAL)
+logging.getLogger('alembic').setLevel(logging.CRITICAL)
+
+mlflow.set_tracking_uri('sqlite:///mlflow.db')
+run = mlflow.get_run('{run_id}')
+accuracy = run.data.metrics.get('accuracy')
+print(accuracy if accuracy is not None else 'None', end='')
+"""],
+            capture_output=True,
+            text=True,
+            cwd="/opt/airflow"
+        )
+        
+        if result.returncode != 0:
+            print(f"Error: {result.stderr}")
+            raise RuntimeError(f"Evaluation failed: {result.stderr}")
+        
+        accuracy_str = result.stdout.strip()
+        if accuracy_str == 'None':
+            raise ValueError("Model accuracy not found in MLflow!")
+        
+        accuracy = float(accuracy_str)
+        print(f"✅ Accuracy from MLflow: {accuracy:.4f}")
+        
+        if accuracy < 0.9:
+            raise ValueError(f"Model accuracy too low: {accuracy:.4f} < 0.9")
+        
         return "passed"
 
     def register_model_task(**context):
+        # Isolate MLflow operations in subprocess to avoid log processing issues
+        import subprocess
+        import sys
+        
         run_id = context["task_instance"].xcom_pull(task_ids="train_model", key="run_id")
-        import mlflow
-        model_uri = f"runs:/{run_id}/model"
-        mlflow.register_model(model_uri, "iris-classifier")
-        print(f"Registered model from run {run_id} as 'iris-classifier'")
+        
+        # Run model registration in subprocess
+        result = subprocess.run(
+            [sys.executable, "-c", f"""
+import sys
+sys.path.insert(0, '/opt/airflow/train')
+import mlflow
+import logging
+logging.getLogger('mlflow').setLevel(logging.CRITICAL)
+logging.getLogger('alembic').setLevel(logging.CRITICAL)
+
+mlflow.set_tracking_uri('sqlite:///mlflow.db')
+mlflow.set_registry_uri('sqlite:///mlflow.db')
+
+model_uri = f'runs:/{run_id}/model'
+mlflow.register_model(model_uri, 'iris-classifier')
+print('success', end='')
+""".replace('{run_id}', run_id)],
+            capture_output=True,
+            text=True,
+            cwd="/opt/airflow"
+        )
+        
+        if result.returncode != 0:
+            print(f"Error: {result.stderr}")
+            raise RuntimeError(f"Model registration failed: {result.stderr}")
+        
+        print(f"✅ Registered model from run {run_id} as 'iris-classifier'")
         return "registered"
 
     # Tasks

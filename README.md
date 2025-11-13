@@ -148,7 +148,29 @@ docker compose up --build
 ```
 
 **4. Test the API:**
+
+**PowerShell:**
+```powershell
+# Health check
+curl http://localhost:8000/healthz
+
+# Make prediction
+$body = @{
+    sepal_length=5.1
+    sepal_width=3.5
+    petal_length=1.4
+    petal_width=0.2
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
+```
+
+**Bash/Linux:**
 ```bash
+# Health check
+curl http://localhost:8000/healthz
+
+# Make prediction
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{
@@ -209,9 +231,17 @@ docker exec airflow-webserver airflow dags trigger iris_training_pipeline
 # Check DAG status
 docker exec airflow-webserver airflow dags list-runs -d iris_training_pipeline
 
+# View logs for debugging
+docker logs airflow-scheduler --tail 50
+
 # Stop Airflow
 docker compose -f docker-compose.airflow.yaml down
 ```
+
+**Known Issue & Fix**: Airflow 2.10.x has a RecursionError in log processing with verbose MLflow output. This has been fixed by:
+- Suppressing MLflow logging to CRITICAL level
+- Isolating training tasks in subprocesses to prevent log overflow
+- See [AIRFLOW_ISSUE_ANALYSIS.md](AIRFLOW_ISSUE_ANALYSIS.md) for technical details
 
 **Using Native Airflow (Linux/Mac/WSL only):**
 ```bash
@@ -238,16 +268,20 @@ airflow dags trigger iris_training_pipeline
 ### Model Versioning & Tracking
 - **Artifacts (default path)**: Portable model saved to `artifacts/iris-classifier/` and loaded by the API. This works without running an MLflow server.
 - **MLflow Tracking**: Local runs log to a SQLite DB (`mlflow.db`).
-- **Registry (optional)**: To use the MLflow Model Registry, run an MLflow tracking server and point both training and serving to it. Example:
+- **Registry (optional)**: To use the MLflow Model Registry, run an MLflow tracking server and point both training and serving to it.
 
-  ```bash
-  mlflow server \
-    --backend-store-uri sqlite:///mlflow.db \
-    --default-artifact-root file:./mlruns \
-    --host 0.0.0.0 --port 5000
-  ```
+**Start MLflow UI:**
+```bash
+# For local development (localhost only)
+mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 
-  Then set your client(s) accordingly (PowerShell):
+# For network access
+mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root file:./mlruns --host 0.0.0.0 --port 5000 --app-name basic-auth
+```
+
+Then access MLflow at http://localhost:5000
+
+Then set your client(s) accordingly (PowerShell):
 
   ```powershell
   $env:MLFLOW_TRACKING_URI="http://localhost:5000"
@@ -317,21 +351,34 @@ Prometheus metrics for monitoring.
 docker build -t iris-predictor:latest .
 ```
 
-**Run container:**
-```bash
-docker run -p 8000:8000 iris-predictor:latest
-```
+**Note**: Ensure `.dockerignore` excludes development files like `airflow-data/`, `tests/`, `dashboards/` to prevent build errors.
 
-**Docker Compose (with PostgreSQL):**
+**Run with Docker Compose (recommended - includes PostgreSQL):**
 ```bash
 docker-compose up -d
 ```
 
+**Run standalone container (requires external PostgreSQL):**
+```bash
+docker run -p 8000:8000 \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/mlops \
+  iris-predictor:latest
+```
+
+**Note**: Port 8000 is used by the docker-compose nginx load balancer. To avoid conflicts, stop docker-compose before running standalone containers.
+
 ### Kubernetes Deployment
 
 **Prerequisites:**
-- Kubernetes cluster (kind/minikube/GKE/EKS/AKS)
+- Kubernetes cluster (Docker Desktop/kind/minikube/GKE/EKS/AKS)
 - kubectl configured
+
+**Enable Kubernetes in Docker Desktop:**
+1. Open Docker Desktop Settings
+2. Navigate to Kubernetes tab
+3. Check "Enable Kubernetes"
+4. Click "Apply & Restart"
+5. Wait for Kubernetes to start (green indicator)
 
 **Deploy full stack:**
 ```bash
@@ -545,6 +592,35 @@ python tests/test_lb.py
 - Set up centralized log aggregation (ELK/Splunk)
 - Implement model retraining pipeline
 - Add horizontal pod autoscaling (HPA)
+
+**Recent Improvements:**
+- ✅ Fixed Airflow 2.10.x RecursionError with subprocess isolation and logging suppression
+- ✅ Enhanced Docker build process with proper `.dockerignore`
+- ✅ Improved documentation for multi-platform support (Windows PowerShell + Linux/Mac)
+- ✅ Added comprehensive troubleshooting documentation in `AIRFLOW_ISSUE_ANALYSIS.md`
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Airflow DAG fails with zombie task detection:**
+- See [AIRFLOW_ISSUE_ANALYSIS.md](AIRFLOW_ISSUE_ANALYSIS.md) for detailed analysis
+- Solution: Use subprocess isolation for training tasks (already implemented)
+
+**Docker build fails with "airflow-data" access errors:**
+- Ensure `.dockerignore` includes `airflow-data/`, `tests/`, `dashboards/`, `deploy/`
+
+**Port 8000 already in use:**
+- Check if docker-compose is running: `docker-compose ps`
+- Stop conflicting services: `docker-compose down`
+
+**MLflow server won't accept connections:**
+- For local development: `mlflow ui` (localhost only)
+- For network access: `mlflow server --host 0.0.0.0 --app-name basic-auth`
+
+**Kubernetes not available:**
+- Enable Kubernetes in Docker Desktop settings (see Deployment section)
+- Verify with: `kubectl version --client`
 
 ## 🤝 Contributing
 

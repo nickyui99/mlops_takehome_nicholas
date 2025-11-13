@@ -8,6 +8,15 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 import json
 from datetime import datetime
+import logging
+import warnings
+
+# Suppress all logging output
+logging.getLogger("alembic").setLevel(logging.CRITICAL)
+logging.getLogger("mlflow").setLevel(logging.CRITICAL)
+logging.getLogger("git").setLevel(logging.CRITICAL)
+warnings.filterwarnings("ignore")
+os.environ["GIT_PYTHON_REFRESH"] = "quiet"
 
 # Use SQLite + relative artifact root (tracking DB only)
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
@@ -83,14 +92,17 @@ def train_model():
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
 
-        print(f"✅ Training successful!")
-        print(f"   Model Version: {model_version}")
-        print(f"   Run ID: {run.info.run_id}")
-        print(f"   Accuracy: {accuracy:.4f}")
-        if register:
-            print(f"   Model registered as 'iris-classifier'")
-        print(f"   Local model saved to: {local_dir.resolve()}")
-        print(f"   Metadata saved to: {metadata_path.resolve()}")
+        # Only print if running as main (not when imported)
+        if __name__ == "__main__":
+            print(f"✅ Training successful!")
+            print(f"   Model Version: {model_version}")
+            print(f"   Run ID: {run.info.run_id}")
+            print(f"   Accuracy: {accuracy:.4f}")
+            if register:
+                print(f"   Model registered as 'iris-classifier'")
+            print(f"   Local model saved to: {local_dir.resolve()}")
+            print(f"   Metadata saved to: {metadata_path.resolve()}")
+        
         return run.info.run_id
 
 if __name__ == "__main__":

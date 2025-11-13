@@ -1,0 +1,11 @@
+{
+  "model_version": "v20251112_202547",
+  "run_id": "e1d56079916a468bb0ceb5e2b1fa260e",
+  "accuracy": 1.0,
+  "trained_at": "2025-11-12T20:25:58.543403",
+  "params": {
+    "test_size": 0.2,
+    "random_state": 42,
+    "max_iter": 200
+  }
+}

@@ -2,6 +2,18 @@ grafana:
   adminPassword: admin
   service:
     type: NodePort  # or ClusterIP (Kind uses localhost)
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: ds_prometheus
+        url: http://prometheus-server.mlops-dev.svc.cluster.local:80
+        access: proxy
+        isDefault: true
+        jsonData:
+          timeInterval: 30s
   dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1
@@ -17,4 +29,5 @@ grafana:
   dashboards:
     default:
       iris-dashboard:
-        url: https://raw.githubusercontent.com/your-repo/main/dashboards/iris-dashboard.json
+        # Provision our repo's dashboard (uses Prometheus UID ds_prometheus)
+        url: https://raw.githubusercontent.com/nickyui99/mlops_takehome_nicholas/main/dashboards/iris-dashboard-full.json

@@ -33,21 +33,19 @@ REQUEST_LATENCY = Histogram("http_request_duration_seconds", "HTTP Request Laten
 # --- Model ---
 model = None
 model_version = "unknown"
+model_metadata = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global model, model_version
+    global model, model_version, model_metadata
 
     mlflow.set_tracking_uri("sqlite:///mlflow.db")
 
     init_db()
-    model = load_model()
+    model, model_metadata = load_model()
 
-    # Extract version from model metadata (MLflow stores it)
-    try:
-        model_version = model._model_meta.run_id  # fallback
-    except:
-        model_version = "iris-v1"
+    # Extract version from metadata
+    model_version = model_metadata.get("model_version", "unknown")
     print(f"✅ Model loaded. Version: {model_version}")
     yield
 
@@ -64,6 +62,7 @@ class IrisOutput(BaseModel):
     prediction: Literal["setosa", "versicolor", "virginica"]
     latency_ms: float
     model_version: str
+    pod_name: str
 
 # --- Endpoints ---
 @app.get("/healthz")
@@ -81,6 +80,8 @@ async def predict(request: Request, input: IrisInput):
     species = ["setosa", "versicolor", "virginica"]
     prediction = species[int(prediction_idx)]
     latency_ms = (time.perf_counter() - start) * 1000
+
+    print(f"Model version: {model_version}, Prediction: {prediction}, Latency: {latency_ms:.2f}ms")
 
     # Log
     logger.info("prediction_served",

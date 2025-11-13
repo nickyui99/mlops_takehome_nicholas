@@ -1,8 +1,8 @@
 {
-  "model_version": "v20251112_202547",
-  "run_id": "e1d56079916a468bb0ceb5e2b1fa260e",
+  "model_version": "v20251113_174011",
+  "run_id": "0587d7b7dcdc499a98554c3b4d5ae5c0",
   "accuracy": 1.0,
-  "trained_at": "2025-11-12T20:25:58.543403",
+  "trained_at": "2025-11-13T17:40:34.844028",
   "params": {
     "test_size": 0.2,
     "random_state": 42,

@@ -1,31 +1,37 @@
 # MLOps Take-Home: Iris Classifier
 
-Production-ready ML system demonstrating end-to-end MLOps practices: reproducible training, experiment tracking, containerized serving, Kubernetes deployment, and observability.
+Production-ready ML system demonstrating end-to-end MLOps practices with load balancing, orchestration, CI/CD, and observability.
 
 ## 📋 Table of Contents
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Repository Structure](#repository-structure)
 - [Quick Start](#quick-start)
-- [Training Pipeline](#training-pipeline)
-- [Model Serving](#model-serving)
-- [Deployment](#deployment)
-- [Monitoring & Observability](#monitoring--observability)
-- [CI/CD](#cicd)
+- [Required Capabilities](#required-capabilities)
+  - [A) Load Balancer](#a-load-balancer-must-have)
+  - [B) Orchestration](#b-orchestration)
+  - [C) CI/CD](#c-cicd-github-actions-only)
+  - [D) Observability](#d-observability-grafana--prometheus)
+  - [E) Model Tracking/Monitoring](#e-model-tracking--monitoring)
+  - [F) Traffic & Security](#f-traffic--security)
+  - [G) State & Metadata](#g-state--metadata)
+  - [H) Cost & Scalability](#h-cost--scalability)
+  - [I) Rollback](#i-rollback)
 - [Testing](#testing)
 
 ## 🎯 Overview
 
-This project implements a complete MLOps pipeline for an Iris flower classification model, including:
+This project implements a complete MLOps pipeline for an Iris flower classification model, addressing all required capabilities:
 
-✅ **Reproducible Training** with MLflow experiment tracking  
-✅ **FastAPI REST API** with Prometheus metrics & structured logging  
-✅ **Kubernetes Deployment** with 3-replica high availability  
-✅ **PostgreSQL Database** for prediction logging  
-✅ **Prometheus + Grafana** monitoring stack  
-✅ **CI/CD Pipelines** with GitHub Actions  
-✅ **Airflow DAG** for workflow orchestration  
-✅ **Docker & Docker Compose** for local development  
+✅ **Load Balancer** - NGINX reverse proxy distributing traffic across replicas  
+✅ **Orchestration** - Kubernetes with 3-replica deployment  
+✅ **CI/CD** - GitHub Actions for automated testing and deployment  
+✅ **Observability** - Prometheus + Grafana monitoring stack  
+✅ **Model Tracking** - MLflow for experiment tracking and versioning  
+✅ **Traffic & Security** - Input validation, health checks, proper error handling  
+✅ **State & Metadata** - PostgreSQL for prediction logging  
+✅ **Cost & Scalability** - Resource limits, horizontal scaling ready  
+✅ **Rollback** - Version-tagged Docker images with rollback capability  
 
 **Model Details**: Logistic Regression trained on Iris dataset (96%+ accuracy). See [MODEL_CARD.md](MODEL_CARD.md) for full details.
 
@@ -33,8 +39,8 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 
 ```
 ┌─────────────┐    ┌──────────────┐    ┌───────────────┐
-│   Client    │───▶│  Kubernetes  │───▶│   FastAPI     │
-│             │    │   Service    │    │   (3 pods)    │
+│   Client    │───▶│     NGINX    │───▶│   FastAPI     │
+│             │    │Load Balancer │    │   (3 pods)    │
 └─────────────┘    └──────────────┘    └───────┬───────┘
                                                │
                     ┌──────────────────────────┼──────────────┐
@@ -78,9 +84,7 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 ├── sql/                     # Database schemas
 ├── Dockerfile               # Container image
 ├── docker-compose.yaml      # Multi-service orchestration
-├── docker-compose.airflow.yaml  # Airflow setup (Docker)
 ├── requirements.txt         # Python dependencies
-├── AIRFLOW_SETUP.md         # Airflow documentation
 └── MODEL_CARD.md            # Model documentation
 ```
 
@@ -89,44 +93,16 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 ### Prerequisites
 - Python 3.10+
 - Docker & Docker Compose
-- (Optional) Kubernetes cluster (kind/minikube for local)
-- **Windows Users**: Docker Desktop with WSL2 backend for Airflow support
+- Kubernetes cluster (Docker Desktop/kind/minikube for local)
 
-### ⚙️ Configuration (.env)
-Create a `.env` file in the project root to override defaults as needed. The app has safe defaults and will work with Docker Compose out of the box.
+### Local Development with Docker Compose
 
-```env
-# Database (matches docker compose postgres service)
-DB_HOST=postgres
-DB_PORT=5432
-DB_NAME=mlops
-DB_USER=postgres
-DB_PASSWORD=postgres
-
-# Model loading
-# By default the server loads the local artifact bundle saved by the trainer
-MODEL_URI=artifacts/iris-classifier
-MODEL_NAME=iris-classifier
-MODEL_VERSION=1
-
-# MLflow tracking (optional for local dev)
-# For simple local runs, you can leave this out. The trainer saves to artifacts/.
-# If you run an MLflow server, set your client(s) to point at it instead.
-# Example server: mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root file:./mlruns
-# MLFLOW_TRACKING_URI=http://localhost:5000
-```
-
-### Local Development
-
-> Compose topology: NGINX acts as a reverse proxy on port 8000 (host) → forwards to `iris-api:8000` (app). Hitting http://localhost:8000 will go through NGINX.
-
-**1. Clone and install dependencies:**
+**1. Clone and setup:**
 ```bash
 git clone https://github.com/nickyui99/mlops_takehome_nicholas.git
 cd mlops_takehome_nicholas
 python -m venv .venv
 .venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 ```
 
@@ -134,22 +110,13 @@ pip install -r requirements.txt
 ```bash
 python train/train.py
 ```
-Output:
-```
-✅ Training successful!
-   Run ID: abc123...
-   Accuracy: 0.9667
-   Local model saved to: artifacts/iris-classifier/
-```
 
-**3. Start API with Docker Compose:**
+**3. Start services with load balancer:**
 ```bash
 docker compose up --build
 ```
 
 **4. Test the API:**
-
-**PowerShell:**
 ```powershell
 # Health check
 curl http://localhost:8000/healthz
@@ -165,227 +132,34 @@ $body = @{
 Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
 ```
 
-**Bash/Linux:**
+## ✅ Required Capabilities
+
+### A) Load Balancer (must-have)
+
+**Implementation**: NGINX reverse proxy in `docker-compose.yaml`
+
+- **Configuration**: `nginx.conf` distributes traffic across API replicas
+- **Round-robin** load balancing between 3 backend pods
+- **Health checks**: `/healthz` endpoint monitoring
+- **Testing**: `tests/test_lb.py` verifies distribution
+
+**Verification**:
 ```bash
-# Health check
-curl http://localhost:8000/healthz
-
-# Make prediction
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sepal_length": 5.1,
-    "sepal_width": 3.5,
-    "petal_length": 1.4,
-    "petal_width": 0.2
-  }'
+# Check distribution across pods
+python tests/test_lb.py
+# Expected: Requests distributed to different pod_names
 ```
 
-Response:
-```json
-{
-  "prediction": "setosa",
-  "latency_ms": 12.34,
-  "model_version": "v2025xxxx_xxxxxx",
-  "pod_name": "local-dev"
-}
-```
+### B) Orchestration
 
-## 🔬 Training Pipeline
+**Implementation**: Kubernetes deployment with 3 replicas
 
-### Overview
-Training script uses MLflow for experiment tracking and model versioning.
-
-**Training script:** `train/train.py`
-
-**Key features:**
-- Loads Iris dataset from scikit-learn (deterministic, versioned by sklearn package)
-- Trains Logistic Regression with fixed random seed (42)
-- Logs hyperparameters: `test_size`, `random_state`, `max_iter`
-- Logs metrics: `accuracy`
-- Saves model artifacts to `artifacts/iris-classifier/`
-- Tracks experiments in SQLite backend (`mlflow.db`)
-
-### Manual Training
-```bash
-python train/train.py
-```
-
-### Automated Training (Airflow)
-
-**⚠️ Windows Users**: Airflow doesn't support native Windows installation. Use Docker instead (see below).
-
-**Using Docker (Recommended for Windows):**
-```bash
-# Start Airflow containers
-cd mlops_takehome_nicholas
-docker compose -f docker-compose.airflow.yaml up -d
-
-# Wait ~30 seconds for initialization, then access Web UI
-# Open: http://localhost:8080
-# Login: admin / admin
-
-# Trigger DAG via CLI
-docker exec airflow-webserver airflow dags trigger iris_training_pipeline
-
-# Check DAG status
-docker exec airflow-webserver airflow dags list-runs -d iris_training_pipeline
-
-# View logs for debugging
-docker logs airflow-scheduler --tail 50
-
-# Stop Airflow
-docker compose -f docker-compose.airflow.yaml down
-```
-
-**Known Issue & Fix**: Airflow 2.10.x has a RecursionError in log processing with verbose MLflow output. This has been fixed by:
-- Suppressing MLflow logging to CRITICAL level
-- Isolating training tasks in subprocesses to prevent log overflow
-- See [AIRFLOW_ISSUE_ANALYSIS.md](AIRFLOW_ISSUE_ANALYSIS.md) for technical details
-
-**Using Native Airflow (Linux/Mac/WSL only):**
-```bash
-# Initialize Airflow
-export AIRFLOW_HOME=~/airflow
-airflow db init
-
-# Start services
-airflow webserver --port 8080 &
-airflow scheduler &
-
-# Trigger DAG
-airflow dags trigger iris_training_pipeline
-```
-
-**DAG Steps:**
-1. **Fetch Data**: Load Iris dataset
-2. **Train Model**: Execute training with MLflow logging
-3. **Evaluate**: Validate accuracy > 90%
-4. **Register**: Promote model if validation passes
-
-**📖 Detailed Setup**: See [AIRFLOW_SETUP.md](AIRFLOW_SETUP.md) for complete instructions, troubleshooting, and CLI reference.
-
-### Model Versioning & Tracking
-- **Artifacts (default path)**: Portable model saved to `artifacts/iris-classifier/` and loaded by the API. This works without running an MLflow server.
-- **MLflow Tracking**: Local runs log to a SQLite DB (`mlflow.db`).
-- **Registry (optional)**: To use the MLflow Model Registry, run an MLflow tracking server and point both training and serving to it.
-
-**Start MLflow UI:**
-```bash
-# For local development (localhost only)
-mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
-
-# For network access
-mlflow server --backend-store-uri sqlite:///mlflow.db --default-artifact-root file:./mlruns --host 0.0.0.0 --port 5000 --app-name basic-auth
-```
-
-Then access MLflow at http://localhost:5000
-
-Then set your client(s) accordingly (PowerShell):
-
-  ```powershell
-  $env:MLFLOW_TRACKING_URI="http://localhost:5000"
-  ```
-
-- **Run ID**: Unique identifier for reproducibility
-- **Data Version**: Tracked via sklearn package version in `requirements.txt`
-
-## 🌐 Model Serving
-
-### API Endpoints
-
-#### `POST /predict`
-Predict iris species from flower measurements.
-
-**Request:**
-```json
-{
-  "sepal_length": 5.1,
-  "sepal_width": 3.5,
-  "petal_length": 1.4,
-  "petal_width": 0.2
-}
-```
-
-**Response:**
-```json
-{
-  "prediction": "setosa",
-  "latency_ms": 12.34,
-  "model_version": "v2025xxxx_xxxxxx",
-  "pod_name": "local-dev"
-}
-```
-
-#### `GET /healthz`
-Health check endpoint.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "model_version": "v2025xxxx_xxxxxx"
-}
-```
-
-#### `GET /metrics`
-Prometheus metrics for monitoring.
-
-**Metrics exposed:**
-- `http_requests_total` - Total request count by endpoint & status
-- `http_request_duration_seconds` - Request latency histogram
-
-### Features
-- **Input Validation**: Pydantic models enforce schema
-- **Structured Logging**: JSON logs with request IDs
-- **Database Logging**: All predictions saved to PostgreSQL
-- **Prometheus Metrics**: Custom counters & histograms
-- **Error Handling**: Graceful degradation with proper status codes
-
-## 🚢 Deployment
-
-### Docker Deployment
-
-**Build image:**
-```bash
-docker build -t iris-predictor:latest .
-```
-
-**Note**: Ensure `.dockerignore` excludes development files like `airflow-data/`, `tests/`, `dashboards/` to prevent build errors.
-
-**Run with Docker Compose (recommended - includes PostgreSQL):**
-```bash
-docker-compose up -d
-```
-
-**Run standalone container (requires external PostgreSQL):**
-```bash
-docker run -p 8000:8000 \
-  -e DATABASE_URL=postgresql://user:pass@host:5432/mlops \
-  iris-predictor:latest
-```
-
-**Note**: Port 8000 is used by the docker-compose nginx load balancer. To avoid conflicts, stop docker-compose before running standalone containers.
-
-### Kubernetes Deployment
-
-**Prerequisites:**
-- Kubernetes cluster (Docker Desktop/kind/minikube/GKE/EKS/AKS)
-- kubectl configured
-
-**Enable Kubernetes in Docker Desktop:**
-1. Open Docker Desktop Settings
-2. Navigate to Kubernetes tab
-3. Check "Enable Kubernetes"
-4. Click "Apply & Restart"
-5. Wait for Kubernetes to start (green indicator)
-
-**Deploy full stack:**
+**Deploy to Kubernetes**:
 ```bash
 # Create namespace
 kubectl apply -f deploy/k8s/namespace.yaml
 
-# Deploy PostgreSQL (using Helm)
+# Deploy PostgreSQL
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm install postgres bitnami/postgresql -n mlops-dev \
   --set auth.postgresPassword=postgres,auth.database=mlops
@@ -393,45 +167,46 @@ helm install postgres bitnami/postgresql -n mlops-dev \
 # Deploy application
 kubectl apply -f deploy/k8s/
 
-# Verify deployment
+# Verify
 kubectl get pods -n mlops-dev
 kubectl get svc -n mlops-dev
 ```
 
-**Configuration:**
-- **Replicas**: 3 pods for high availability
-- **Resources**: 128Mi-256Mi memory, 100m-200m CPU
-- **Health checks**: Liveness & readiness probes on `/healthz`
-- **Load balancing**: Round-robin across pods
+**Features**:
+- 3 replica pods for high availability
+- Resource limits (128Mi-256Mi memory, 100m-200m CPU)
+- Liveness & readiness probes
+- ClusterIP service with load balancing
 
-**Access the service:**
+### C) CI/CD (GitHub Actions only)
+
+**Workflows**:
+
+1. **CI Pipeline** (`.github/workflows/ci.yml`)
+   - Triggers on push/PR to main
+   - Lints with `ruff`
+   - Runs unit tests with `pytest`
+   - Builds Docker image
+   - Pushes to GitHub Container Registry
+
+2. **Deploy to Dev** (`.github/workflows/deploy-dev.yml`)
+   - Triggers on push to main
+   - Deploys to development cluster
+   - Runs smoke tests
+
+3. **Promote to Prod** (`.github/workflows/promote-prod.yml`)
+   - Manual workflow dispatch
+   - Deploys tested image to production
+   - Post-deployment health checks
+
+### D) Observability (Grafana + Prometheus)
+
+**Metrics Collection**:
+- Prometheus scrapes `/metrics` endpoint every 15s
+- Custom metrics: `http_requests_total`, `http_request_duration_seconds`
+
+**Deploy monitoring stack**:
 ```bash
-# Port forward
-kubectl port-forward svc/iris-predictor-svc 8000:8000 -n mlops-dev
-
-# Test
-curl http://localhost:8000/healthz
-```
-
-> Ingress: To expose via Ingress, ensure an Ingress Controller (e.g., NGINX Ingress) is installed.
-
-```bash
-# Install NGINX Ingress Controller (example)
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
-
-# Apply ingress
-kubectl apply -f deploy/k8s/ingress.yaml
-```
-
-### Monitoring Stack
-
-**Deploy Prometheus & Grafana:**
-```bash
-# Add Helm repos
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo add grafana https://grafana.github.io/helm-charts
-
 # Install Prometheus
 helm install prometheus prometheus-community/prometheus \
   -n mlops-dev -f deploy/monitoring/prometheus-values.yaml
@@ -443,103 +218,120 @@ helm install grafana grafana/grafana \
 # Get Grafana password
 kubectl get secret grafana -n mlops-dev -o jsonpath="{.data.admin-password}" | base64 --decode
 
-# Port forward Grafana
+# Port forward
 kubectl port-forward svc/grafana 3000:80 -n mlops-dev
 ```
 
-**Import dashboard:**
-- Open http://localhost:3000
-- Login with `admin` / (password from above)
-- Import `dashboards/iris-dashboard.json`
+**Dashboard**: Import `dashboards/iris-dashboard.json` to visualize:
+- Request rate and latency
+- Error rates
+- Model version distribution
 
-## 📊 Monitoring & Observability
+**Structured Logging**: JSON logs with `request_id`, `model_version`, `pod_name`, `latency_ms`
 
-### Metrics Collection
-- **Prometheus** scrapes `/metrics` endpoint every 15s
-- **Custom metrics** tracked:
-  - `http_requests_total` - Request counter by endpoint & status
-  - `http_request_duration_seconds` - Latency histogram
+### E) Model Tracking / Monitoring
 
-### Alerting
-Configured alerts in `deploy/monitoring/prometheus-values.yaml`:
-- **HighErrorRate**: Triggers when error rate > 5% for 1 minute
+**Implementation**: MLflow for experiment tracking
 
-### Logging
-- **Structured JSON logs** to stdout
-- Each request logged with:
-  - `request_id` (UUID)
-  - `model_version`
-  - `pod_name` (for debugging in K8s)
-  - `latency_ms`
-  - `input` & `prediction`
+**Features**:
+- Tracks hyperparameters, metrics, and artifacts
+- Model versioning with run IDs
+- Local artifact storage in `artifacts/`
+- SQLite backend for metadata
 
-**View logs:**
+**Start MLflow UI**:
 ```bash
-# Docker Compose
-docker compose logs -f iris-api
-
-# Kubernetes
-kubectl logs -f deployment/iris-predictor -n mlops-dev
+mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 ```
 
-### Database Tracking
-All predictions stored in PostgreSQL:
+**Database Logging**: All predictions stored in PostgreSQL with:
+- `request_id`, `model_version`, `latency_ms`
+- Input features and prediction
+- Timestamp for drift analysis
+
+### F) Traffic & Security
+
+**Implemented**:
+- ✅ **Input Validation**: Pydantic models enforce schema
+- ✅ **Health Checks**: `/healthz` endpoint for liveness/readiness
+- ✅ **Error Handling**: Proper HTTP status codes (400, 500)
+- ✅ **Request IDs**: UUID tracking for debugging
+- ✅ **Non-root Container**: Security best practice
+
+**TODO for Production**:
+- Move DB credentials to Kubernetes secrets
+- Add rate limiting
+- Implement authentication/authorization
+
+### G) State & Metadata
+
+**Database Schema** (`sql/schema.sql`):
 ```sql
-SELECT * FROM predictions ORDER BY timestamp DESC LIMIT 10;
+CREATE TABLE predictions (
+    id SERIAL PRIMARY KEY,
+    request_id VARCHAR(36) NOT NULL,
+    model_version VARCHAR(50) NOT NULL,
+    input_data JSONB NOT NULL,
+    prediction VARCHAR(20) NOT NULL,
+    latency_ms FLOAT NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
-Schema includes: `request_id`, `model_version`, `latency_ms`, `input_data`, `prediction`, `timestamp`
-
-## 🔄 CI/CD
-
-### GitHub Actions Workflows
-
-#### **1. CI Pipeline** (`.github/workflows/ci.yml`)
-Triggers on: `push`, `pull_request` to `main`
-
-**Steps:**
-1. Lint code with `ruff`
-2. Run unit tests with `pytest`
-3. Build Docker image
-4. Push image to GitHub Container Registry (GHCR)
-
-CI to GHCR notes:
-- Ensure the workflow has `permissions: packages: write`.
-- Login to GHCR before pushing, e.g.:
-
-```yaml
-- name: Login to GHCR
-  run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+**Query predictions**:
+```bash
+docker exec -it postgres psql -U postgres -d mlops -c "SELECT * FROM predictions ORDER BY timestamp DESC LIMIT 10;"
 ```
 
-#### **2. Deploy to Dev** (`.github/workflows/deploy-dev.yml`)
-Triggers on: `push` to `main`
+### H) Cost & Scalability
 
-**Steps:**
-1. Set up Kind cluster
-2. Deploy PostgreSQL via Helm
-3. Apply Kubernetes manifests
-4. Run smoke tests
+**Resource Management**:
+- **CPU**: 100m request, 200m limit per pod
+- **Memory**: 128Mi request, 256Mi limit per pod
+- **Replicas**: 3 pods for availability
 
-#### **3. Promote to Prod** (`.github/workflows/promote-prod.yml`)
-Triggers: Manual (`workflow_dispatch`)
+**Horizontal Scaling**:
+```bash
+# Scale up
+kubectl scale deployment iris-predictor --replicas=5 -n mlops-dev
 
-**Steps:**
-1. Deploy to production cluster
-2. Run post-deployment health checks
+# Auto-scaling (HPA) ready
+kubectl autoscale deployment iris-predictor --cpu-percent=80 --min=3 --max=10 -n mlops-dev
+```
 
-### Secrets Management
-Required GitHub secrets:
-- `GITHUB_TOKEN` (automatic)
+**Cost Considerations**:
+- Lightweight model (< 1MB)
+- Fast inference (< 50ms)
+- Efficient resource utilization
 
-For production:
-- Use Kubernetes secrets for DB credentials
-- Mount secrets as environment variables
-- Never commit credentials to repo
+### I) Rollback
+
+**Version Management**:
+- Docker images tagged with `latest` and `sha-<commit>`
+- Git tags for release versions
+
+**Rollback procedure**:
+```bash
+# List available versions
+docker images ghcr.io/nickyui99/iris-predictor
+
+# Rollback to previous version
+kubectl set image deployment/iris-predictor \
+  iris-predictor=ghcr.io/nickyui99/iris-predictor:sha-abc123 \
+  -n mlops-dev
+
+# Or rollback to previous deployment
+kubectl rollout undo deployment/iris-predictor -n mlops-dev
+
+# Check rollout status
+kubectl rollout status deployment/iris-predictor -n mlops-dev
+```
+
+**Automated Rollback**: GitHub Actions can trigger rollback on failed health checks.
 
 ## 🧪 Testing
 
-### Run Tests Locally
+**Run tests locally**:
 ```bash
 # Unit tests
 pytest tests/test_api.py -v
@@ -548,10 +340,19 @@ pytest tests/test_api.py -v
 python tests/test_lb.py
 ```
 
-### Test Coverage
-- **API Tests**: Validate `/predict` and `/healthz` endpoints
-- **Model Loading**: Verify model loads correctly
-- **Input Validation**: Test Pydantic schema enforcement
+**Test Coverage**:
+- ✅ API endpoint validation (`/predict`, `/healthz`)
+- ✅ Model loading and inference
+- ✅ Input validation (Pydantic)
+- ✅ Load balancing distribution
+- ✅ Database logging
+- ✅ Prometheus metrics
+
+---
+
+**Built with**: Python, FastAPI, MLflow, scikit-learn, Docker, Kubernetes, Prometheus, Grafana, PostgreSQL, NGINX
+
+**Repository**: https://github.com/nickyui99/mlops_takehome_nicholas
 - **Load Balancing**: Verify requests distribute across pods
 
 ### Load Balancer Test
@@ -637,4 +438,6 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Built with**: Python, FastAPI, MLflow, scikit-learn, Docker, Kubernetes, Prometheus, Grafana, PostgreSQL, Airflow
+**Built with**: Python, FastAPI, MLflow, scikit-learn, Docker, Kubernetes, Prometheus, Grafana, PostgreSQL, NGINX
+
+**Repository**: https://github.com/nickyui99/mlops_takehome_nicholas

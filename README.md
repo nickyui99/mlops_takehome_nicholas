@@ -1,27 +1,38 @@
-# MLOps Take-Home: Iris Classifier
+# MLOps Take-Home: Titanic Survival Predictor
 
 Production-ready ML system demonstrating end-to-end MLOps practices with load balancing, orchestration, CI/CD, and observability.
 
 ## 📋 Table of Contents
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Repository Structure](#repository-structure)
-- [Quick Start](#quick-start)
-- [Required Capabilities](#required-capabilities)
-  - [A) Load Balancer](#a-load-balancer-must-have)
-  - [B) Orchestration](#b-orchestration)
-  - [C) CI/CD](#c-cicd-github-actions-only)
-  - [D) Observability](#d-observability-grafana--prometheus)
-  - [E) Model Tracking/Monitoring](#e-model-tracking--monitoring)
-  - [F) Traffic & Security](#f-traffic--security)
-  - [G) State & Metadata](#g-state--metadata)
-  - [H) Cost & Scalability](#h-cost--scalability)
-  - [I) Rollback](#i-rollback)
-- [Testing](#testing)
+- [MLOps Take-Home: Titanic Survival Predictor](#mlops-take-home-titanic-survival-predictor)
+  - [📋 Table of Contents](#-table-of-contents)
+  - [🎯 Overview](#-overview)
+  - [🏗️ Architecture](#️-architecture)
+  - [📁 Repository Structure](#-repository-structure)
+  - [🚀 Quick Start](#-quick-start)
+    - [Prerequisites](#prerequisites)
+  - [✅ Required Capabilities](#-required-capabilities)
+    - [A) Load Balancer (must-have)](#a-load-balancer-must-have)
+    - [B) Orchestration](#b-orchestration)
+    - [C) CI/CD (GitHub Actions only)](#c-cicd-github-actions-only)
+    - [D) Observability (Grafana + Prometheus)](#d-observability-grafana--prometheus)
+    - [E) Model Tracking / Monitoring](#e-model-tracking--monitoring)
+    - [F) Traffic \& Security](#f-traffic--security)
+    - [G) State \& Metadata](#g-state--metadata)
+    - [H) Cost \& Scalability](#h-cost--scalability)
+    - [I) Rollback](#i-rollback)
+  - [🧪 Testing](#-testing)
+    - [Load Balancer Test](#load-balancer-test)
+  - [✅ Reproducibility Checklist](#-reproducibility-checklist)
+  - [🔐 Security \& Best Practices](#-security--best-practices)
+  - [📝 Notes for Reviewers](#-notes-for-reviewers)
+  - [🐛 Troubleshooting](#-troubleshooting)
+    - [Common Issues](#common-issues)
+  - [🤝 Contributing](#-contributing)
+  - [📄 License](#-license)
 
 ## 🎯 Overview
 
-This project implements a complete MLOps pipeline for an Iris flower classification model, addressing all required capabilities:
+This project implements a complete MLOps pipeline for a Titanic survival prediction model, addressing all required capabilities:
 
 ✅ **Load Balancer** - NGINX reverse proxy distributing traffic across replicas  
 ✅ **Orchestration** - Kubernetes with 3-replica deployment  
@@ -33,7 +44,7 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 ✅ **Cost & Scalability** - Resource limits, horizontal scaling ready  
 ✅ **Rollback** - Version-tagged Docker images with rollback capability  
 
-**Model Details**: Logistic Regression trained on Iris dataset (96%+ accuracy). See [MODEL_CARD.md](MODEL_CARD.md) for full details.
+**Model Details**: Logistic Regression trained on Titanic dataset (78-82% accuracy). Predicts passenger survival based on class, sex, age, family size, fare, and embarkation port. See [MODEL_CARD.md](MODEL_CARD.md) for full details.
 
 ## 🏗️ Architecture
 
@@ -74,7 +85,7 @@ This project implements a complete MLOps pipeline for an Iris flower classificat
 │       ├── prometheus-values.yaml
 │       └── grafana-values.yaml
 ├── pipelines/
-│   └── iris_training_dag.py # Airflow DAG
+│   └── titanic_training_dag.py # Airflow DAG
 ├── .github/workflows/       # CI/CD pipelines
 │   ├── ci.yml              # Lint, test, build, push
 │   ├── deploy-dev.yml      # Deploy to dev cluster
@@ -207,8 +218,8 @@ kubectl get nodes
 **Deployment Steps**:
 ```bash
 # 1. Build and verify image (for local clusters)
-docker build -t iris-predictor:latest .
-docker images | grep iris-predictor
+docker build -t titanic-predictor:latest .
+docker images | grep titanic-predictor
 
 # 2. Create namespace
 kubectl apply -f deploy/k8s/namespace.yaml
@@ -238,7 +249,7 @@ kubectl get pods -n mlops-dev
 kubectl get svc -n mlops-dev
 
 # 7. Access the application (port forward)
-kubectl port-forward svc/iris-predictor-svc 8000:8000 -n mlops-dev
+kubectl port-forward svc/titanic-predictor-svc 8000:8000 -n mlops-dev
 ```
 
 **Test the Kubernetes deployment**:
@@ -315,7 +326,7 @@ kubectl get secret grafana -n mlops-dev -o jsonpath="{.data.admin-password}" | b
 kubectl port-forward svc/grafana 3000:80 -n mlops-dev
 ```
 
-**Dashboard**: Import `dashboards/iris-dashboard.json` to visualize:
+**Dashboard**: Import `dashboards/titanic-dashboard.json` to visualize:
 - Request rate and latency
 - Error rates
 - Model version distribution
@@ -386,10 +397,10 @@ docker exec -it postgres psql -U postgres -d mlops -c "SELECT * FROM predictions
 **Horizontal Scaling**:
 ```bash
 # Scale up
-kubectl scale deployment iris-predictor --replicas=5 -n mlops-dev
+kubectl scale deployment titanic-predictor --replicas=5 -n mlops-dev
 
 # Auto-scaling (HPA) ready
-kubectl autoscale deployment iris-predictor --cpu-percent=80 --min=3 --max=10 -n mlops-dev
+kubectl autoscale deployment titanic-predictor --cpu-percent=80 --min=3 --max=10 -n mlops-dev
 ```
 
 **Cost Considerations**:
@@ -407,12 +418,12 @@ kubectl autoscale deployment iris-predictor --cpu-percent=80 --min=3 --max=10 -n
 ```bash
 # Rollback to specific image version
 docker compose down
-docker tag ghcr.io/nickyui99/iris-predictor:sha-abc123 iris-predictor:latest
+docker tag ghcr.io/nickyui99/titanic-predictor:sha-abc123 titanic-predictor:latest
 docker compose up -d
 
 # Or pull and use specific version
-docker pull ghcr.io/nickyui99/iris-predictor:sha-abc123
-docker tag ghcr.io/nickyui99/iris-predictor:sha-abc123 iris-predictor:latest
+docker pull ghcr.io/nickyui99/titanic-predictor:sha-abc123
+docker tag ghcr.io/nickyui99/titanic-predictor:sha-abc123 titanic-predictor:latest
 docker compose up -d
 ```
 
@@ -422,13 +433,13 @@ docker compose up -d
 kubectl get rs -n mlops-dev
 
 # Rollback to previous version
-kubectl rollout undo deployment/iris-predictor -n mlops-dev
+kubectl rollout undo deployment/titanic-predictor -n mlops-dev
 
 # Rollback to specific revision
-kubectl rollout undo deployment/iris-predictor --to-revision=2 -n mlops-dev
+kubectl rollout undo deployment/titanic-predictor --to-revision=2 -n mlops-dev
 
 # Check rollout status
-kubectl rollout status deployment/iris-predictor -n mlops-dev
+kubectl rollout status deployment/titanic-predictor -n mlops-dev
 ```
 
 **Automated Rollback**: GitHub Actions can trigger rollback on failed health checks.

@@ -1,0 +1,24 @@
+{
+  "model_version": "v20251114_174012",
+  "run_id": "177a2acbc7a7429fa384979ff2242536",
+  "accuracy": 0.8044692737430168,
+  "precision": 0.7297297297297297,
+  "recall": 0.782608695652174,
+  "f1_score": 0.7552447552447552,
+  "trained_at": "2025-11-14T17:40:32.532565",
+  "params": {
+    "test_size": 0.2,
+    "random_state": 42,
+    "max_iter": 200,
+    "class_weight": "balanced"
+  },
+  "features": [
+    "pclass",
+    "sex",
+    "age",
+    "sibsp",
+    "parch",
+    "fare",
+    "embarked"
+  ]
+}

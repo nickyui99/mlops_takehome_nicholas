@@ -1,3 +1,4 @@
+artifact_path: file:///C:/Test3/mlops_takehome_nicholas/mlruns/2/models/m-dbde8fbc8dd94d0595d724430c784e6e/artifacts
 flavors:
   python_function:
     env:
@@ -13,8 +14,9 @@ flavors:
     serialization_format: cloudpickle
     sklearn_version: 1.7.2
 mlflow_version: 3.6.0
-model_id: null
-model_size_bytes: 845
-model_uuid: 685497aeb5b44d029d13d3218b8d4a65
+model_id: m-dbde8fbc8dd94d0595d724430c784e6e
+model_size_bytes: 781
+model_uuid: m-dbde8fbc8dd94d0595d724430c784e6e
 prompts: null
-utc_time_created: '2025-11-14 09:21:31.950407'
+run_id: 177a2acbc7a7429fa384979ff2242536
+utc_time_created: '2025-11-14 09:40:17.413111'

@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: iris-predictor
+  name: titanic-predictor
   namespace: mlops-dev
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: iris-predictor
+      app: titanic-predictor
   template:
     metadata:
       labels:
-        app: iris-predictor
+        app: titanic-predictor
       # ✅ ADD PROMETHEUS ANNOTATIONS HERE
       annotations:
         prometheus.io/scrape: "true"
@@ -19,16 +19,17 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       containers:
-      - name: iris-predictor
-        image: iris-predictor:latest
-        imagePullPolicy: Never
+      - name: titanic-predictor
+        image: titanic-predictor:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
+          name: http
         env:
         - name: DB_HOST
           value: "postgres-postgresql.mlops-dev.svc.cluster.local"
         - name: MODEL_NAME
-          value: "iris-classifier"
+          value: "titanic-classifier"
         - name: MODEL_VERSION
           value: "1"
         resources:
@@ -38,3 +39,15 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5

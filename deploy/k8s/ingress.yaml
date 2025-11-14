@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: iris-ingress
+  name: titanic-ingress
   namespace: mlops-dev
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
@@ -13,6 +13,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: iris-predictor-svc
+            name: titanic-predictor-svc
             port:
               number: 8000

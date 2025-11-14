@@ -9,3 +9,6 @@ apache-airflow==2.10.1
 prometheus_client
 psycopg2-binary
 structlog
+seaborn
+pandas
+numpy

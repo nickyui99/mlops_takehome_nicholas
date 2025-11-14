@@ -52,14 +52,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # --- Models ---
-class IrisInput(BaseModel):
-    sepal_length: float
-    sepal_width: float
-    petal_length: float
-    petal_width: float
+class TitanicInput(BaseModel):
+    pclass: int  # Passenger class (1, 2, or 3)
+    sex: str  # 'male' or 'female'
+    age: float  # Age in years
+    sibsp: int  # Number of siblings/spouses aboard
+    parch: int  # Number of parents/children aboard
+    fare: float  # Passenger fare
+    embarked: str  # Port of embarkation ('C', 'Q', or 'S')
 
-class IrisOutput(BaseModel):
-    prediction: Literal["setosa", "versicolor", "virginica"]
+class TitanicOutput(BaseModel):
+    prediction: Literal["survived", "died"]
+    survival_probability: float
     latency_ms: float
     model_version: str
     pod_name: str
@@ -69,19 +73,39 @@ class IrisOutput(BaseModel):
 async def healthz():
     return {"status": "ok", "model_version": model_version}
 
-@app.post("/predict", response_model=IrisOutput)
-async def predict(request: Request, input: IrisInput):
+@app.post("/predict", response_model=TitanicOutput)
+async def predict(request: Request, input: TitanicInput):
     start = time.perf_counter()
     request_id = str(uuid.uuid4())
     
+    # Preprocess input
+    sex_encoded = 0 if input.sex.lower() == 'male' else 1
+    embarked_map = {'C': 0, 'Q': 1, 'S': 2}
+    embarked_encoded = embarked_map.get(input.embarked.upper(), 2)
+    
+    # Create feature vector in the same order as training
+    input_vec = [[input.pclass, sex_encoded, input.age, input.sibsp, input.parch, input.fare, embarked_encoded]]
+    
+    # Apply preprocessing (imputation and scaling)
+    import joblib
+    from pathlib import Path
+    model_path = Path(model_metadata.get('model_path', 'artifacts/titanic-classifier'))
+    imputer = joblib.load(model_path / 'imputer.pkl')
+    scaler = joblib.load(model_path / 'scaler.pkl')
+    
+    input_imputed = imputer.transform(input_vec)
+    input_scaled = scaler.transform(input_imputed)
+    
     # Predict
-    input_vec = [[input.sepal_length, input.sepal_width, input.petal_length, input.petal_width]]
-    prediction_idx = model.predict(input_vec)[0]
-    species = ["setosa", "versicolor", "virginica"]
-    prediction = species[int(prediction_idx)]
+    prediction_idx = model.predict(input_scaled)[0]
+    prediction_proba = model.predict_proba(input_scaled)[0]
+    survival_prob = float(prediction_proba[1])  # Probability of survival
+    
+    outcomes = ["died", "survived"]
+    prediction = outcomes[int(prediction_idx)]
     latency_ms = (time.perf_counter() - start) * 1000
 
-    print(f"Model version: {model_version}, Prediction: {prediction}, Latency: {latency_ms:.2f}ms")
+    print(f"Model version: {model_version}, Prediction: {prediction} ({survival_prob:.2%}), Latency: {latency_ms:.2f}ms")
 
     # Log
     logger.info("prediction_served",
@@ -112,6 +136,7 @@ async def predict(request: Request, input: IrisInput):
 
     return {
         "prediction": prediction,
+        "survival_probability": round(survival_prob, 4),
         "latency_ms": round(latency_ms, 2),
         "model_version": model_version,
         "pod_name": POD_NAME

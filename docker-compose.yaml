@@ -10,12 +10,12 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
-  iris-api:
+  titanic-api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     environment:
       DB_HOST: postgres
-      MODEL_NAME: iris-classifier
+      MODEL_NAME: titanic-classifier
       MODEL_VERSION: "1"
     depends_on:
       - postgres
@@ -32,7 +32,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - iris-api
+      - titanic-api
 
 volumes:
   postgres-data:

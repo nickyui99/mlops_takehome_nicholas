@@ -1,13 +1,26 @@
 import requests
 
 url = "http://localhost:8000/predict"
-data = {"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2}
+data = {
+    "pclass": 1,
+    "sex": "female",
+    "age": 29.0,
+    "sibsp": 0,
+    "parch": 0,
+    "fare": 100.0,
+    "embarked": "C"
+}
 headers = {"Content-Type": "application/json"}
+
+print("Testing load balancer distribution across replicas...")
+print(f"Sending 6 requests to: {url}\n")
 
 for i in range(6):
     resp = requests.post(url, json=data, headers=headers)
     if resp.status_code == 200:
-        pod = resp.json().get("pod_name", "unknown")
-        print(f"Request {i+1} → Pod: {pod}")
+        result = resp.json()
+        pod = result.get("pod_name", "unknown")
+        prediction = result.get("prediction", "unknown")
+        print(f"Request {i+1} → Pod: {pod} | Prediction: {prediction}")
     else:
-        print("Error:", resp.status_code)
+        print(f"Request {i+1} → Error: {resp.status_code}")

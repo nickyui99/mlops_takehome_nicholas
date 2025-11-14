@@ -131,15 +131,27 @@ docker compose up --build
 # Health check
 curl http://localhost:8000/healthz
 
-# Make prediction
+# Make prediction - First-class female passenger (high survival probability)
 $body = @{
-    sepal_length=5.1
-    sepal_width=3.5
-    petal_length=1.4
-    petal_width=0.2
+    pclass=1
+    sex="female"
+    age=29.0
+    sibsp=0
+    parch=0
+    fare=100.0
+    embarked="C"
 } | ConvertTo-Json
 
 Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
+
+# Expected output:
+# {
+#   "prediction": "survived",
+#   "survival_probability": 0.92,
+#   "latency_ms": 15.23,
+#   "model_version": "v20251114_174012",
+#   "pod_name": "titanic-api"
+# }
 ```
 
 ## ✅ Required Capabilities
@@ -257,15 +269,27 @@ kubectl port-forward svc/titanic-predictor-svc 8000:8000 -n mlops-dev
 # In a new terminal - Health check
 curl http://localhost:8000/healthz
 
-# Make prediction
+# Make prediction - Third-class male passenger (low survival probability)
 $body = @{
-    sepal_length=5.1
-    sepal_width=3.5
-    petal_length=1.4
-    petal_width=0.2
+    pclass=3
+    sex="male"
+    age=25.0
+    sibsp=0
+    parch=0
+    fare=7.25
+    embarked="S"
 } | ConvertTo-Json
 
 Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
+
+# Expected output:
+# {
+#   "prediction": "died",
+#   "survival_probability": 0.15,
+#   "latency_ms": 12.45,
+#   "model_version": "v20251114_174012",
+#   "pod_name": "titanic-predictor-xyz"
+# }
 ```
 
 **Kubernetes Features**:
@@ -472,13 +496,13 @@ python tests/test_lb.py
 
 ### Load Balancer Test
 
-`tests/test_lb.py` is designed to demonstrate distribution across multiple replicas. Run it after deploying to Kubernetes with 3 replicas (as defined in `deploy/k8s/deployment.yaml`) or after setting up a load-balanced multi-replica environment. In plain Docker Compose with a single `iris-api` instance, all responses will show the same `pod_name`.
+`tests/test_lb.py` is designed to demonstrate distribution across multiple replicas. Run it after deploying to Kubernetes with 3 replicas (as defined in `deploy/k8s/deployment.yaml`) or after setting up a load-balanced multi-replica environment. In plain Docker Compose with a single `titanic-api` instance, all responses will show the same `pod_name`.
 
 ## ✅ Reproducibility Checklist
 
 - [x] **Code versioned**: Git repository with commit history
 - [x] **Environment captured**: `requirements.txt` + `Dockerfile`
-- [x] **Data versioned**: Iris dataset versioned via sklearn package (pinned in requirements)
+- [x] **Data versioned**: Titanic dataset versioned via seaborn package (pinned in requirements)
 - [x] **Random seeds fixed**: `random_state=42` in training script
 - [x] **Metrics logged**: MLflow tracks accuracy and all parameters
 - [x] **Artifacts stored**: Models saved to `artifacts/` and MLflow registry

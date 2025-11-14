@@ -96,9 +96,10 @@ async def predict(request: Request, input: TitanicInput):
     input_imputed = imputer.transform(input_vec)
     input_scaled = scaler.transform(input_imputed)
     
-    # Predict
-    prediction_idx = model.predict(input_scaled)[0]
-    prediction_proba = model.predict_proba(input_scaled)[0]
+    # Predict - Load the underlying sklearn model for predict_proba
+    sklearn_model = joblib.load(model_path / 'model.pkl')
+    prediction_idx = sklearn_model.predict(input_scaled)[0]
+    prediction_proba = sklearn_model.predict_proba(input_scaled)[0]
     survival_prob = float(prediction_proba[1])  # Probability of survival
     
     outcomes = ["died", "survived"]

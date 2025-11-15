@@ -1,0 +1,25 @@
+﻿serverFiles:
+  prometheus.yml:
+    scrape_configs:
+      - job_name: 'titanic-predictor'
+        scrape_interval: 15s
+        scrape_timeout: 10s
+        metrics_path: '/metrics'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - mlops-dev
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: titanic-predictor-svc
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: http
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: service
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod

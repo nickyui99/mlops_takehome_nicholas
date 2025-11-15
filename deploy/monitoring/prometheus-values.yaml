@@ -1,6 +1,10 @@
 server:
   persistentVolume:
     enabled: false
+  
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
 
   # ✅ Add alerting rules here
   files:
@@ -15,6 +19,17 @@ server:
             severity: warning
           annotations:
             summary: "High error rate on /predict (>5%)"
+
+extraScrapeConfigs: |
+  - job_name: 'titanic-predictor'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['titanic-predictor-svc.mlops-dev.svc.cluster.local:8000']
+        labels:
+          service: 'titanic-predictor'
+          namespace: 'mlops-dev'
 
 alertmanager:
   persistentVolume:

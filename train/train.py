@@ -72,7 +72,7 @@ def train_model():
         model_version = get_model_version()
         
         # Log params
-        params = {"test_size": 0.2, "random_state": 42, "max_iter": 200, "class_weight": "balanced"}
+        params = {"test_size": 0.2, "random_state": 42, "max_iter": 300, "class_weight": "balanced"}
         mlflow.log_params(params)
         mlflow.log_param("model_version", model_version)
         mlflow.set_tag("model_version", model_version)

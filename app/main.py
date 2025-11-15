@@ -4,6 +4,7 @@ import uuid
 import json
 import time
 from fastapi import FastAPI, Request
+from fastapi.responses import Response
 import mlflow
 from pydantic import BaseModel
 from typing import Literal
@@ -68,6 +69,24 @@ class TitanicOutput(BaseModel):
     model_version: str
     pod_name: str
 
+# --- Middleware for unified request metrics ---
+@app.middleware("http")
+async def record_metrics(request: Request, call_next):
+    start_time = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Record failed request (assumed 500)
+        REQUEST_COUNT.labels(method=request.method, endpoint=request.url.path, status="500").inc()
+        # Observe latency up to exception point
+        duration = time.perf_counter() - start_time
+        REQUEST_LATENCY.labels(endpoint=request.url.path).observe(duration)
+        raise
+    duration = time.perf_counter() - start_time
+    REQUEST_COUNT.labels(method=request.method, endpoint=request.url.path, status=str(response.status_code)).inc()
+    REQUEST_LATENCY.labels(endpoint=request.url.path).observe(duration)
+    return response
+
 # --- Endpoints ---
 @app.get("/healthz")
 async def healthz():
@@ -131,9 +150,7 @@ async def predict(request: Request, input: TitanicInput):
     except Exception as e:
         logger.error("db_insert_failed", error=str(e))
 
-    # Record metrics
-    REQUEST_COUNT.labels(method="POST", endpoint="/predict", status="200").inc()
-    REQUEST_LATENCY.labels(endpoint="/predict").observe(latency_ms / 1000.0)
+    # Metrics now recorded in middleware; no per-endpoint manual increment needed.
 
     return {
         "prediction": prediction,
@@ -143,9 +160,13 @@ async def predict(request: Request, input: TitanicInput):
         "pod_name": POD_NAME
     }
 
+# --- Test Endpoints ---
+@app.get("/test/error500")
+async def test_error500():
+    """Test endpoint that deliberately returns 500 error for testing monitoring."""
+    raise Exception("Simulated server error for testing purposes")
+
 # --- Observability ---
 @app.get("/metrics")
 async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
-from fastapi.responses import Response

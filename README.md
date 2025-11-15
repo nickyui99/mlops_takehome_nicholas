@@ -21,7 +21,11 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
     - [H) Cost \& Scalability](#h-cost--scalability)
     - [I) Rollback](#i-rollback)
   - [🧪 Testing](#-testing)
-    - [Load Balancer Test](#load-balancer-test)
+    - [1. API Unit Tests (`tests/test_api.py`)](#1-api-unit-tests-teststest_apipy)
+    - [2. Load Balancer Tests (`tests/test_lb.py`)](#2-load-balancer-tests-teststest_lbpy)
+    - [3. Traffic Generation Tests (`tests/test_traffic.py`)](#3-traffic-generation-tests-teststest_trafficpy)
+    - [Running All Tests](#running-all-tests)
+    - [Test Environment Setup](#test-environment-setup)
   - [✅ Reproducibility Checklist](#-reproducibility-checklist)
   - [🔐 Security \& Best Practices](#-security--best-practices)
   - [📝 Notes for Reviewers](#-notes-for-reviewers)
@@ -470,33 +474,208 @@ kubectl rollout status deployment/titanic-predictor -n mlops-dev
 
 ## 🧪 Testing
 
-**Run tests locally**:
-```bash
-# Unit tests
-pytest tests/test_api.py -v
+The test suite includes three test files covering different aspects of the MLOps system:
 
-# Load balancer test (requires running service)
+### 1. API Unit Tests (`tests/test_api.py`)
+
+Basic API functionality tests with sample predictions for different passenger profiles.
+
+**Run tests**:
+```bash
+# Ensure the API is running first
+docker compose up -d
+
+# Run API tests
+python tests/test_api.py
+```
+
+**Test Coverage**:
+- ✅ Prediction endpoint (`/predict`)
+- ✅ High survival probability scenario (First-class female passenger)
+- ✅ Low survival probability scenario (Third-class male passenger)
+- ✅ Response structure validation
+
+**Expected Output**:
+```
+Testing Titanic prediction API...
+Input: {'pclass': 1, 'sex': 'female', 'age': 29.0, ...}
+Response: {'prediction': 'survived', 'survival_probability': 0.92, ...}
+
+Input: {'pclass': 3, 'sex': 'male', 'age': 25.0, ...}
+Response: {'prediction': 'died', 'survival_probability': 0.15, ...}
+```
+
+### 2. Load Balancer Tests (`tests/test_lb.py`)
+
+Verifies that the NGINX load balancer correctly distributes requests across multiple API replicas.
+
+**Run tests**:
+```bash
+# Start services with 3 replicas
+docker compose up --build -d
+
+# Verify replicas are running
+docker compose ps
+
+# Test load distribution
 python tests/test_lb.py
 ```
 
 **Test Coverage**:
-- ✅ API endpoint validation (`/predict`, `/healthz`)
-- ✅ Model loading and inference
-- ✅ Input validation (Pydantic)
-- ✅ Load balancing distribution
-- ✅ Database logging
-- ✅ Prometheus metrics
+- ✅ Request distribution across replicas
+- ✅ Load balancing behavior validation
+- ✅ Pod name differentiation
+
+**Expected Output**:
+```
+Testing load balancer distribution across replicas...
+Sending 6 requests to: http://localhost:8000/predict
+
+Request 1 → Pod: titanic-api-1 | Prediction: survived
+Request 2 → Pod: titanic-api-2 | Prediction: survived
+Request 3 → Pod: titanic-api-3 | Prediction: survived
+Request 4 → Pod: titanic-api-1 | Prediction: survived
+Request 5 → Pod: titanic-api-2 | Prediction: survived
+Request 6 → Pod: titanic-api-3 | Prediction: survived
+```
+
+**Note**: In Docker Compose, `pod_name` will reflect container names (`titanic-api-1`, `titanic-api-2`, etc.). In Kubernetes, you'll see K8s pod names.
+
+### 3. Traffic Generation Tests (`tests/test_traffic.py`)
+
+Comprehensive traffic generation script for testing metrics, monitoring, and error handling. Simulates realistic production traffic patterns including both successful requests and various error scenarios.
+
+**Run tests**:
+```bash
+# Start services
+docker compose up -d
+
+# Generate 100 requests with 10% error rate (default)
+python tests/test_traffic.py
+
+# Custom configuration
+python tests/test_traffic.py --requests 200 --delay 100 --error-rate 0.15
+
+# Options:
+#   --url           Base URL (default: http://localhost:8000)
+#   --requests      Number of requests (default: 100)
+#   --delay         Delay between requests in ms (default: 50)
+#   --error-rate    Error percentage 0.0-1.0 (default: 0.1)
+#   --quiet         Suppress verbose output
+```
+
+**Test Coverage**:
+- ✅ Random passenger data generation
+- ✅ Valid prediction requests
+- ✅ Invalid input validation (missing fields, wrong types, invalid values)
+- ✅ 4xx error scenarios (400, 404)
+- ✅ 5xx error scenarios (500 internal server error)
+- ✅ Latency tracking and statistics
+- ✅ Error distribution analysis
+- ✅ Load balancer distribution verification
+- ✅ Grafana metrics generation
+
+**Error Scenarios Tested**:
+- Missing required fields (e.g., `pclass`, `age`, `fare`)
+- Invalid data types (e.g., string instead of number)
+- Invalid value ranges (e.g., negative age, invalid embarkation port)
+- Non-existent endpoints (404 errors)
+- Simulated server errors (500 errors)
+
+**Expected Output**:
+```
+======================================================================
+Generating 100 requests to http://localhost:8000
+Error rate: 10.0%
+======================================================================
+
+[  1/100] ✓ Pod: titanic-api | Prediction: survived  | Probability: 0.8542 | Latency: 12.45ms
+[  2/100] ✓ Pod: titanic-api | Prediction: died      | Probability: 0.1234 | Latency: 11.23ms
+[  3/100] ⚠ Error [400]: Bad Request: invalid value for pclass
+...
+
+======================================================================
+Traffic Generation Summary
+======================================================================
+Total Requests:     100
+Successful:         90 (90.0%)
+Failed:             10 (10.0%)
+  - Expected:       10
+  - Unexpected:     0
+
+Error Breakdown:
+  - 4xx Errors:     8
+  - 5xx Errors:     2
+
+Latency Statistics:
+  Mean:             12.34ms
+  Median:           11.50ms
+  Min:              8.20ms
+  Max:              45.67ms
+
+======================================================================
+✓ Traffic generation complete!
+  Check Grafana dashboard at: http://localhost:3000
+  Dashboard: Titanic Survival Prediction Dashboard
+======================================================================
+```
+
+**Use Cases**:
+- **Metrics Testing**: Generate traffic to populate Grafana dashboards
+- **Load Testing**: Simulate high-volume production traffic
+- **Error Handling**: Verify proper error responses and logging
+- **Monitoring Validation**: Ensure Prometheus correctly captures metrics
+- **Performance Baseline**: Establish latency benchmarks
+
+### Running All Tests
+
+```bash
+# Start all services
+docker compose up --build -d
+
+# Wait for services to be ready
+sleep 10
+
+# Run all test suites
+python tests/test_api.py
+python tests/test_lb.py
+python tests/test_traffic.py --requests 50
+
+# Check Prometheus metrics
+curl http://localhost:8000/metrics
+
+# View logs
+docker compose logs -f
+```
+
+### Test Environment Setup
+
+**Prerequisites**:
+```bash
+# Install testing dependencies
+pip install requests pytest
+
+# Verify services are running
+docker compose ps
+
+# Check API health
+curl http://localhost:8000/healthz
+```
+
+**Cleanup**:
+```bash
+# Stop services
+docker compose down
+
+# Remove volumes (optional)
+docker compose down -v
+```
 
 ---
 
 **Built with**: Python, FastAPI, MLflow, scikit-learn, Docker, Kubernetes, Prometheus, Grafana, PostgreSQL, NGINX
 
 **Repository**: https://github.com/nickyui99/mlops_takehome_nicholas
-- **Load Balancing**: Verify requests distribute across pods
-
-### Load Balancer Test
-
-`tests/test_lb.py` is designed to demonstrate distribution across multiple replicas. Run it after deploying to Kubernetes with 3 replicas (as defined in `deploy/k8s/deployment.yaml`) or after setting up a load-balanced multi-replica environment. In plain Docker Compose with a single `titanic-api` instance, all responses will show the same `pod_name`.
 
 ## ✅ Reproducibility Checklist
 

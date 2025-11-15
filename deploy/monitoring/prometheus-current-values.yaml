@@ -1,0 +1,27 @@
+﻿alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+    receivers:
+    - name: "null"
+    route:
+      group_by:
+      - alertname
+      receiver: "null"
+  persistentVolume:
+    enabled: false
+server:
+  files:
+    alerts: |
+      groups:
+      - name: iris.rules
+        rules:
+        - alert: HighErrorRate
+          expr: rate(http_requests_total{status=~"5.."}[1m]) / rate(http_requests_total[1m]) > 0.05
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High error rate on /predict (>5%)"
+  persistentVolume:
+    enabled: false

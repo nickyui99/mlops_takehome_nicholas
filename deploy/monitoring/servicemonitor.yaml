@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: titanic-predictor-sm
+  namespace: mlops-dev
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: titanic-predictor
+  namespaceSelector:
+    matchNames:
+      - mlops-dev
+  endpoints:
+    - port: http
+      interval: 15s
+      path: /metrics

@@ -17,6 +17,7 @@ from app.db import init_db, get_db_connection
 
 # --- Environment ---
 POD_NAME = os.getenv("HOSTNAME", "unknown")
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db")
 
 # --- Logging ---
 structlog.configure(
@@ -29,25 +30,46 @@ logger = structlog.get_logger()
 # --- Metrics ---
 REQUEST_COUNT = Counter("http_requests_total", "Total HTTP Requests", ["method", "endpoint", "status"])
 REQUEST_LATENCY = Histogram("http_request_duration_seconds", "HTTP Request Latency", ["endpoint"])
-
+PREDICTION_COUNTER = Counter("model_predictions_total", "Total Predictions", ["model_version", "pod_name", "prediction"])
+PREDICTION_LATENCY = Histogram("model_prediction_duration_seconds", "Model Prediction Latency", ["model_version"])
 
 # --- Model ---
 model = None
 model_version = "unknown"
 model_metadata = {}
+mlflow_run_id = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global model, model_version, model_metadata
+    global model, model_version, model_metadata, mlflow_run_id
 
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    # Configure MLflow
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment("titanic-classifier-serving")
+    
+    logger.info(f"MLflow tracking URI: {MLFLOW_TRACKING_URI}")
 
-    init_db()
-    model, model_metadata = load_model()
+    # Start MLflow run for this service instance
+    mlflow_run = mlflow.start_run(run_name=f"serving-{POD_NAME}")
+    mlflow_run_id = mlflow_run.info.run_id
+    
+    try:
+        init_db()
+        model, model_metadata = load_model()
 
-    # Extract version from metadata
-    model_version = model_metadata.get("model_version", "unknown")
-    print(f"✅ Model loaded. Version: {model_version}")
+        # Extract version from metadata
+        model_version = model_metadata.get("model_version", "unknown")
+        
+        # Log model metadata to MLflow
+        mlflow.log_param("pod_name", POD_NAME)
+        mlflow.log_param("model_version", model_version)
+        mlflow.log_param("model_name", os.getenv("MODEL_NAME", "titanic-classifier"))
+        mlflow.log_dict(model_metadata, "model_metadata.json")
+        
+        logger.info(f"✅ Model loaded. Version: {model_version}", 
+                   model_version=model_version, 
+                   mlflow_run_id=mlflow_run_id)
+        print(f"✅ Model loaded. Version: {model_version}")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -124,6 +146,22 @@ async def predict(request: Request, input: TitanicInput):
     outcomes = ["died", "survived"]
     prediction = outcomes[int(prediction_idx)]
     latency_ms = (time.perf_counter() - start) * 1000
+    
+    # Log metrics to Prometheus
+    PREDICTION_COUNTER.labels(
+        model_version=model_version,
+        pod_name=POD_NAME,
+        prediction=prediction
+    ).inc()
+    PREDICTION_LATENCY.labels(model_version=model_version).observe(latency_ms / 1000)
+    
+    # Log to MLflow (metrics only, not individual predictions to avoid overwhelming the system)
+    try:
+        with mlflow.start_run(run_id=mlflow_run_id):
+            mlflow.log_metric(f"prediction_latency_ms", latency_ms, step=int(time.time()))
+            mlflow.log_metric(f"survival_probability", survival_prob, step=int(time.time()))
+    except Exception as e:
+        logger.warning("mlflow_log_failed", error=str(e))
 
     print(f"Model version: {model_version}, Prediction: {prediction} ({survival_prob:.2%}), Latency: {latency_ms:.2f}ms")
 

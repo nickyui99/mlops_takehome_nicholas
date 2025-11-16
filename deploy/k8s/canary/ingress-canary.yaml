@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: titanic-predictor-canary
+  namespace: mlops-dev
+  annotations:
+    # Enable canary deployment
+    nginx.ingress.kubernetes.io/canary: "true"
+    # Route 10% of traffic to canary
+    nginx.ingress.kubernetes.io/canary-weight: "10"
+    # Or use header-based routing for testing
+    # nginx.ingress.kubernetes.io/canary-by-header: "X-Canary"
+    # nginx.ingress.kubernetes.io/canary-by-header-value: "always"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: titanic-predictor.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: titanic-predictor
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: titanic-predictor-stable
+  namespace: mlops-dev
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: titanic-predictor.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: titanic-predictor
+            port:
+              number: 80

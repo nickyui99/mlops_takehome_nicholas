@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: titanic-predictor-canary
+  namespace: mlops-dev
+  labels:
+    app: titanic-predictor
+    version: canary
+spec:
+  replicas: 1  # 10% of total capacity
+  selector:
+    matchLabels:
+      app: titanic-predictor
+      version: canary
+  template:
+    metadata:
+      labels:
+        app: titanic-predictor
+        version: canary
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: titanic-predictor
+        image: ghcr.io/nickyui99/titanic-predictor:v2.0  # New canary version
+        imagePullPolicy: Always  # Always pull new version
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: DB_HOST
+          value: "postgres-postgresql.mlops-dev.svc.cluster.local"
+        - name: MODEL_NAME
+          value: "titanic-classifier"
+        - name: MODEL_VERSION
+          value: "2.0"  # New model version
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow:5000"
+        - name: DEPLOYMENT_TYPE
+          value: "canary"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2

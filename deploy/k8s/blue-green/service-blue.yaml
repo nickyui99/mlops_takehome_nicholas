@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: titanic-predictor
+  namespace: mlops-dev
+  labels:
+    app: titanic-predictor
+spec:
+  selector:
+    app: titanic-predictor
+    version: blue  # Points to BLUE (current production)
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+
+---
+# Optional: Dedicated service for blue (for internal testing)
+apiVersion: v1
+kind: Service
+metadata:
+  name: titanic-predictor-blue-direct
+  namespace: mlops-dev
+  labels:
+    app: titanic-predictor
+    version: blue
+spec:
+  selector:
+    app: titanic-predictor
+    version: blue
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP

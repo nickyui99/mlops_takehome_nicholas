@@ -10,6 +10,30 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.2
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow/mlruns:/mlflow/mlruns
+      - ./mlflow/artifacts:/mlflow/artifacts
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlruns/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:///mlflow/mlruns/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   titanic-api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -17,8 +41,10 @@ services:
       DB_HOST: postgres
       MODEL_NAME: titanic-classifier
       MODEL_VERSION: "1"
+      MLFLOW_TRACKING_URI: http://mlflow:5000
     depends_on:
       - postgres
+      - mlflow
     volumes:
       - ./artifacts:/app/artifacts  # Mount local artifacts with metadata
       - ./mlruns:/app/mlruns  # so MLflow can read models

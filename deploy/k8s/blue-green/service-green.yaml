@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: titanic-predictor
+  namespace: mlops-dev
+  labels:
+    app: titanic-predictor
+spec:
+  selector:
+    app: titanic-predictor
+    version: green  # Points to GREEN (new version)
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+
+---
+# Optional: Dedicated service for green (for internal testing)
+apiVersion: v1
+kind: Service
+metadata:
+  name: titanic-predictor-green-direct
+  namespace: mlops-dev
+  labels:
+    app: titanic-predictor
+    version: green
+spec:
+  selector:
+    app: titanic-predictor
+    version: green
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP

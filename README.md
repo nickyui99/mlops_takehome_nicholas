@@ -39,10 +39,10 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
 This project implements a complete MLOps pipeline for a Titanic survival prediction model, addressing all required capabilities:
 
 ✅ **Load Balancer** - NGINX reverse proxy distributing traffic across replicas  
-✅ **Orchestration** - Kubernetes with 3-replica deployment  
+✅ **Orchestration** - Docker Compose / Kubernetes with 3-replica deployment  
 ✅ **CI/CD** - GitHub Actions for automated testing and deployment  
 ✅ **Observability** - Prometheus + Grafana monitoring stack  
-✅ **Model Tracking** - MLflow for experiment tracking and versioning  
+✅ **Model Tracking** - **MLflow for experiment tracking, model versioning, and registry** 🆕  
 ✅ **Traffic & Security** - Input validation, health checks, proper error handling  
 ✅ **State & Metadata** - PostgreSQL for prediction logging  
 ✅ **Cost & Scalability** - Resource limits, horizontal scaling ready  
@@ -55,15 +55,21 @@ This project implements a complete MLOps pipeline for a Titanic survival predict
 ```
 ┌─────────────┐    ┌──────────────┐    ┌───────────────┐
 │   Client    │───▶│     NGINX    │───▶│   FastAPI     │
-│             │    │Load Balancer │    │   (3 pods)    │
+│             │    │Load Balancer │    │  (3 replicas) │
 └─────────────┘    └──────────────┘    └───────┬───────┘
                                                │
-                    ┌──────────────────────────┼──────────────┐
-                    ▼                          ▼              ▼
-              ┌──────────┐              ┌───────────┐  ┌──────────┐
-              │PostgreSQL│              │ MLflow    │  │Prometheus│
-              │(Pred Log)│              │(Model Reg)│  │(Metrics) │
-              └──────────┘              └───────────┘  └──────────┘
+                    ┌──────────────────────────┼──────────────────┐
+                    ▼                          ▼                  ▼
+              ┌──────────┐              ┌───────────┐      ┌──────────┐
+              │PostgreSQL│              │ MLflow 🆕 │      │Prometheus│
+              │(Pred Log)│              │(Model Reg)│      │(Metrics) │
+              └──────────┘              └─────┬─────┘      └────┬─────┘
+                                              │                 │
+                                              └────────┬────────┘
+                                                       ▼
+                                                  ┌─────────┐
+                                                  │ Grafana │
+                                                  └─────────┘
 ```
 
 ## 📁 Repository Structure
@@ -363,23 +369,51 @@ kubectl port-forward svc/grafana 3000:80 -n mlops-dev
 
 ### E) Model Tracking / Monitoring
 
-**Implementation**: MLflow for experiment tracking
+**Implementation**: ✅ **MLflow Server with Full Model Registry** 🆕
 
-**Features**:
-- Tracks hyperparameters, metrics, and artifacts
-- Model versioning with run IDs
-- Local artifact storage in `artifacts/`
-- SQLite backend for metadata
+**MLflow Features**:
+- 🔬 **Experiment Tracking**: Track all training runs with hyperparameters and metrics
+- 📊 **Model Registry**: Centralized model versioning with metadata
+- 📁 **Artifact Storage**: Persistent storage for models and preprocessing objects
+- 📈 **Metrics Logging**: Real-time prediction latency and performance tracking
+- 🔄 **Model Comparison**: Side-by-side comparison of different model versions
+- 🎯 **Model Lineage**: Complete history of model training and deployment
 
-**Start MLflow UI**:
+**Quick Start**:
 ```bash
-mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
+# Start all services including MLflow
+docker-compose up -d
+
+# Access MLflow UI at http://localhost:5000
+open http://localhost:5000
+
+# Train a new model version
+python train/train_with_mlflow.py --version 2.0
 ```
+
+**Model Versioning Workflow**:
+1. Train new model with MLflow tracking
+2. Compare metrics in MLflow UI
+3. Update `MODEL_VERSION` in docker-compose.yaml
+4. Restart services to deploy new version
+5. Rollback by reverting `MODEL_VERSION` if needed
+
+**Serving Metrics** (logged per API replica):
+- `prediction_latency_ms`: Real-time prediction latency
+- `survival_probability`: Distribution of predicted probabilities
+- Pod-level performance tracking
+
+**Training Metrics** (logged per experiment):
+- `train_accuracy`, `test_accuracy`
+- `precision`, `recall`, `f1_score`
+- Hyperparameters: `n_estimators`, `max_depth`, etc.
 
 **Database Logging**: All predictions stored in PostgreSQL with:
 - `request_id`, `model_version`, `latency_ms`
 - Input features and prediction
 - Timestamp for drift analysis
+
+📖 **See [README_MLFLOW.md](README_MLFLOW.md) for detailed MLflow guide**
 
 ### F) Traffic & Security
 
@@ -438,39 +472,81 @@ kubectl autoscale deployment titanic-predictor --cpu-percent=80 --min=3 --max=10
 
 ### I) Rollback
 
+✅ **Complete rollback procedures documented** with exact commands for all scenarios.
+
 **Version Management**:
 - Docker images tagged with `latest` and `sha-<commit>`
 - Git tags for release versions
+- MLflow model versioning for model rollback
+- Kubernetes revision history maintained
 
-**Rollback procedure (Docker Compose)**:
+**Quick Rollback Commands**:
+
+**Docker Compose** (< 30 seconds):
 ```bash
-# Rollback to specific image version
-docker compose down
-docker tag ghcr.io/nickyui99/titanic-predictor:sha-abc123 titanic-predictor:latest
-docker compose up -d
-
-# Or pull and use specific version
-docker pull ghcr.io/nickyui99/titanic-predictor:sha-abc123
-docker tag ghcr.io/nickyui99/titanic-predictor:sha-abc123 titanic-predictor:latest
-docker compose up -d
+# Rollback model version only
+# Edit docker-compose.yaml: MODEL_VERSION: "1.0"
+docker-compose restart titanic-api
 ```
 
-**Rollback procedure (Kubernetes)** - if using K8s deployment:
+**Kubernetes** (< 1 minute):
 ```bash
-# List available versions
-kubectl get rs -n mlops-dev
-
-# Rollback to previous version
+# Rollback to previous version (most common)
 kubectl rollout undo deployment/titanic-predictor -n mlops-dev
 
 # Rollback to specific revision
 kubectl rollout undo deployment/titanic-predictor --to-revision=2 -n mlops-dev
 
-# Check rollout status
+# Verify rollback
 kubectl rollout status deployment/titanic-predictor -n mlops-dev
 ```
 
-**Automated Rollback**: GitHub Actions can trigger rollback on failed health checks.
+**Helm** (< 2 minutes):
+```bash
+# View release history
+helm history titanic-predictor -n mlops-dev
+
+# Rollback to previous release
+helm rollback titanic-predictor -n mlops-dev
+
+# Rollback to specific revision
+helm rollback titanic-predictor 2 -n mlops-dev
+```
+
+**Canary Rollback** (< 10 seconds):
+```bash
+# Abort canary deployment
+kubectl delete deployment/titanic-predictor-canary -n mlops-dev
+
+# Or scale down canary
+kubectl scale deployment/titanic-predictor-canary --replicas=0 -n mlops-dev
+```
+
+**Blue-Green Rollback** (< 5 seconds):
+```bash
+# Switch service back to blue (previous version)
+kubectl patch service titanic-predictor -n mlops-dev \
+  -p '{"spec":{"selector":{"version":"blue"}}}'
+```
+
+**MLflow Model Rollback**:
+```bash
+# Update model version in deployment
+kubectl set env deployment/titanic-predictor MODEL_VERSION=1.0 -n mlops-dev
+```
+
+**Automated Rollback**: 
+- GitHub Actions can trigger rollback on failed health checks
+- Health monitoring with automatic rollback capability
+- Alerts sent via Slack/email on rollback events
+
+📖 **See [ROLLBACK_PROCEDURES.md](ROLLBACK_PROCEDURES.md) for comprehensive rollback guide including:**
+- Detailed step-by-step procedures for all deployment methods
+- Canary deployment rollback strategies
+- Blue-green deployment rollback procedures
+- Emergency rollback procedures
+- Rollback verification checklist
+- Automated rollback workflows
 
 ## 🧪 Testing
 

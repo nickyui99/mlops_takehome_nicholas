@@ -42,9 +42,10 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
       - [Full Canary Deployment Demo](#full-canary-deployment-demo)
       - [Full Blue-Green Deployment Demo](#full-blue-green-deployment-demo)
   - [🧪 Testing](#-testing)
-    - [1. API Unit Tests (`tests/test_api.py`)](#1-api-unit-tests-teststest_apipy)
-    - [2. Load Balancer Tests (`tests/test_lb.py`)](#2-load-balancer-tests-teststest_lbpy)
-    - [3. Traffic Generation Tests (`tests/test_traffic.py`)](#3-traffic-generation-tests-teststest_trafficpy)
+    - [1. CI Unit Tests (GitHub Actions)](#1-ci-unit-tests-github-actions)
+    - [2. Integration Tests (Docker/K8s)](#2-integration-tests-dockerk8s)
+    - [3. Load Balancer Tests (`tests/test_lb.py`)](#3-load-balancer-tests-teststest_lbpy)
+    - [4. Traffic Generation Tests (`tests/test_traffic.py`)](#4-traffic-generation-tests-teststest_trafficpy)
     - [Running All Tests](#running-all-tests)
     - [Test Environment Setup](#test-environment-setup)
   - [📝 Notes for Reviewers](#-notes-for-reviewers)
@@ -168,7 +169,9 @@ mlops_takehome_nicholas/
 │   └── schema.sql              # Database schema definitions
 │
 ├── tests/                      # Test suite
-│   ├── test_api.py             # API unit tests
+│   ├── test_api_ci.py          # CI unit tests (FastAPI TestClient, no server)
+│   ├── test_training_ci.py     # CI training tests (no MLflow server)
+│   ├── test_api.py             # Integration tests (real server)
 │   ├── test_lb.py              # Load balancer tests
 │   └── test_traffic.py         # Traffic generation tests
 │
@@ -183,21 +186,23 @@ mlops_takehome_nicholas/
 ├── nginx.conf                  # NGINX load balancer config
 ├── requirements.txt            # Python dependencies
 │
+├── .github/workflows/          # CI/CD pipelines
+│   ├── ci.yml                  # Main CI/CD workflow (lint, test, build, push)
+│   ├── deploy-dev.yml          # Deploy to dev environment
+│   └── promote-prod.yml        # Production promotion (canary/blue-green)
+│
 ├── MODEL_CARD.md               # Model documentation
 ├── README.md                   # Main documentation (this file)
-├── README_MLFLOW.md            # MLflow setup and integration guide
-├── ROLLBACK_PROCEDURES.md      # Detailed rollback documentation
-├── ROLLBACK_QUICK_REFERENCE.md # Quick rollback reference card
 └── VIDEO_DEMO_GUIDE.md         # Video demonstration guide
 ```
 
 **Key Directory Purposes**:
 - **app/**: Core prediction API service
-- **airflow-data/**: Airflow orchestration and pipeline execution
+- **train/**: Model training scripts with MLflow integration
+- **tests/**: CI test suite (test_api_ci.py, test_training_ci.py)
+- **deploy/**: Kubernetes manifests and monitoring configurations
 - **mlflow/ & mlruns/**: ML experiment tracking and model registry
-- **deploy/**: Kubernetes and monitoring configurations
-- **pipelines/**: Workflow definitions for training automation
-- **tests/**: Comprehensive test suite for all components
+- **.github/workflows/**: Complete CI/CD pipeline automation
 - **train/**: Model training scripts
 
 ## 🚀 Quick Start
@@ -399,26 +404,57 @@ Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -C
 - Liveness & readiness probes
 - ClusterIP service with load balancing
 
-### C) CI/CD (GitHub Actions only)
+### C) CI/CD (GitHub Actions)
 
-**Workflows**:
+**Complete CI/CD Pipeline** with 3 automated workflows:
 
-1. **CI Pipeline** (`.github/workflows/ci.yml`)
-   - Triggers on push/PR to main
-   - Lints with `ruff`
-   - Runs unit tests with `pytest`
-   - Builds Docker image
-   - Pushes to GitHub Container Registry
+#### 1. **CI/CD Pipeline** (`.github/workflows/ci.yml`)
+Automated testing and image building on every push/PR:
 
-2. **Deploy to Dev** (`.github/workflows/deploy-dev.yml`)
-   - Triggers on push to main
-   - Deploys to development cluster
-   - Runs smoke tests
+```yaml
+Triggers: push to main/develop, pull requests
+├─ Lint and Test Job
+│  ├─ Lint with ruff
+│  ├─ Run API tests (tests/test_api_ci.py)
+│  └─ Run training tests (tests/test_training_ci.py)
+└─ Build and Push Job (on main only)
+   ├─ Build Docker image
+   └─ Push to ghcr.io/nickyui99/mlops_takehome_nicholas:latest
+```
 
-3. **Promote to Prod** (`.github/workflows/promote-prod.yml`)
-   - Manual workflow dispatch
-   - Deploys tested image to production
-   - Post-deployment health checks
+**Status**: [![CI/CD Pipeline](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml)
+
+#### 2. **Deploy to Dev** (`.github/workflows/deploy-dev.yml`)
+Automated deployment after successful CI build:
+
+```yaml
+Triggers: After CI/CD Pipeline succeeds on main
+├─ Validate K8s manifests
+├─ Simulate dev deployment
+└─ Run smoke tests (health + prediction)
+```
+
+**Status**: [![Deploy to Dev](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml)
+
+#### 3. **Promote to Production** (`.github/workflows/promote-prod.yml`)
+Manual production promotion with deployment strategy choice:
+
+```yaml
+Triggers: Manual workflow_dispatch
+Strategy Options:
+├─ Canary Deployment (gradual rollout: 25% → 100%)
+│  ├─ Deploy canary version
+│  ├─ Monitor metrics for 2 minutes
+│  ├─ Promote to stable if healthy
+│  └─ Rollback if issues detected
+└─ Blue-Green Deployment (instant cutover)
+   ├─ Deploy green environment
+   ├─ Test green environment
+   ├─ Switch traffic to green
+   └─ Keep blue for rollback
+```
+
+**View Workflows**: [GitHub Actions](https://github.com/nickyui99/mlops_takehome_nicholas/actions)
 
 ### D) Observability (Grafana + Prometheus)
 
@@ -504,7 +540,14 @@ python train/train_with_mlflow.py --version 2.0
 - Input features and prediction
 - Timestamp for drift analysis
 
-📖 **See [README_MLFLOW.md](README_MLFLOW.md) for detailed MLflow guide**
+**Quick Start**:
+```bash
+# Start MLflow UI
+docker compose up mlflow -d
+
+# Access at http://localhost:5000
+# Train model: python train/train_with_mlflow.py
+```
 
 ### F) Traffic & Security
 
@@ -626,17 +669,11 @@ kubectl set env deployment/titanic-predictor MODEL_VERSION=1.0 -n mlops-dev
 ```
 
 **Automated Rollback**: 
-- GitHub Actions can trigger rollback on failed health checks
+- GitHub Actions workflows include rollback on failed health checks
+- Canary: Monitors metrics for 2 minutes, auto-rollback if unhealthy
+- Blue-green: Keeps previous environment for instant rollback
 - Health monitoring with automatic rollback capability
-- Alerts sent via Slack/email on rollback events
-
-📖 **See [ROLLBACK_PROCEDURES.md](ROLLBACK_PROCEDURES.md) for comprehensive rollback guide including:**
-- Detailed step-by-step procedures for all deployment methods
-- Canary deployment rollback strategies
-- Blue-green deployment rollback procedures
-- Emergency rollback procedures
-- Rollback verification checklist
-- Automated rollback workflows
+- See `.github/workflows/promote-prod.yml` for implementation
 
 ---
 
@@ -925,25 +962,61 @@ echo "Rollback command: kubectl patch service titanic-predictor -n mlops-dev -p 
 
 ## 🧪 Testing
 
-The test suite includes three test files covering different aspects of the MLOps system:
+The test suite includes both **CI unit tests** (no infrastructure) and **integration tests** (Docker/K8s):
 
-### 1. API Unit Tests (`tests/test_api.py`)
+### 1. CI Unit Tests (GitHub Actions)
 
-Basic API functionality tests with sample predictions for different passenger profiles.
+**API Tests** (`tests/test_api_ci.py`): FastAPI TestClient-based tests without server dependencies.
+
+```bash
+# Run CI tests locally
+python -m pytest tests/test_api_ci.py -v
+```
+
+**Test Coverage**:
+- ✅ Health check endpoint
+- ✅ Valid prediction (returns survived/died + probability)
+- ✅ Missing field validation (422 error)
+- ✅ Metrics endpoint (Prometheus format)
+
+**Training Tests** (`tests/test_training_ci.py`): Model validation without MLflow server.
+
+```bash
+# Run training tests
+python -m pytest tests/test_training_ci.py -v
+```
+
+**Test Coverage**:
+- ✅ Training script import (no MLflow connection on import)
+- ✅ Model artifact existence
+- ✅ Model loading with joblib
+- ✅ Prediction shape validation
+
+**Run all CI tests**:
+```bash
+python -m pytest tests/test_api_ci.py tests/test_training_ci.py -v
+# Expected: 8 passed (4 API + 4 training)
+```
+
+---
+
+### 2. Integration Tests (Docker/K8s)
+
+**API Integration Tests** (`tests/test_api.py`): End-to-end API tests with real server.
 
 **Run tests**:
 ```bash
-# Ensure the API is running first
+# Start services first
 docker compose up -d
 
-# Run API tests
+# Run integration tests
 python tests/test_api.py
 ```
 
 **Test Coverage**:
-- ✅ Prediction endpoint (`/predict`)
-- ✅ High survival probability scenario (First-class female passenger)
-- ✅ Low survival probability scenario (Third-class male passenger)
+- ✅ Real HTTP prediction endpoint
+- ✅ High survival probability (first-class female)
+- ✅ Low survival probability (third-class male)
 - ✅ Response structure validation
 
 **Expected Output**:
@@ -951,12 +1024,9 @@ python tests/test_api.py
 Testing Titanic prediction API...
 Input: {'pclass': 1, 'sex': 'female', 'age': 29.0, ...}
 Response: {'prediction': 'survived', 'survival_probability': 0.92, ...}
-
-Input: {'pclass': 3, 'sex': 'male', 'age': 25.0, ...}
-Response: {'prediction': 'died', 'survival_probability': 0.15, ...}
 ```
 
-### 2. Load Balancer Tests (`tests/test_lb.py`)
+### 3. Load Balancer Tests (`tests/test_lb.py`)
 
 Verifies that the NGINX load balancer correctly distributes requests across multiple API replicas.
 
@@ -992,7 +1062,7 @@ Request 6 → Pod: titanic-api-3 | Prediction: survived
 
 **Note**: In Docker Compose, `pod_name` will reflect container names (`titanic-api-1`, `titanic-api-2`, etc.). In Kubernetes, you'll see K8s pod names.
 
-### 3. Traffic Generation Tests (`tests/test_traffic.py`)
+### 4. Traffic Generation Tests (`tests/test_traffic.py`)
 
 Comprehensive traffic generation script for testing metrics, monitoring, and error handling. Simulates realistic production traffic patterns including both successful requests and various error scenarios.
 
@@ -1080,6 +1150,17 @@ Latency Statistics:
 
 ### Running All Tests
 
+**CI Unit Tests** (no infrastructure needed):
+```bash
+# Install test dependencies
+pip install -r requirements.txt
+
+# Run all CI tests
+python -m pytest tests/test_api_ci.py tests/test_training_ci.py -v
+# Expected: 8 passed (4 API + 4 training)
+```
+
+**Integration Tests** (requires Docker):
 ```bash
 # Start all services
 docker compose up --build -d
@@ -1087,10 +1168,10 @@ docker compose up --build -d
 # Wait for services to be ready
 sleep 10
 
-# Run all test suites
-python tests/test_api.py
-python tests/test_lb.py
-python tests/test_traffic.py --requests 50
+# Run integration tests
+python tests/test_api.py              # API endpoint tests
+python tests/test_lb.py               # Load balancer tests
+python tests/test_traffic.py --requests 50  # Traffic generation
 
 # Check Prometheus metrics
 curl http://localhost:8000/metrics
@@ -1101,12 +1182,21 @@ docker compose logs -f
 
 ### Test Environment Setup
 
-**Prerequisites**:
-```bash
-# Install testing dependencies
-pip install requests pytest
+**CI Environment** (GitHub Actions):
+```yaml
+# Automated on every push/PR
+# See: .github/workflows/ci.yml
+- Linting with ruff
+- 8 unit tests (test_api_ci.py + test_training_ci.py)
+- Docker image build and push to GHCR
+```
 
-# Verify services are running
+**Local Environment**:
+```bash
+# Install dependencies
+pip install requests pytest httpx
+
+# Verify Docker services
 docker compose ps
 
 # Check API health

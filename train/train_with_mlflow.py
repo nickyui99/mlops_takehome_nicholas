@@ -20,12 +20,8 @@ from sklearn.impute import SimpleImputer
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# Configure MLflow
+# MLflow configuration (lazy initialization - only set when training)
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-mlflow.set_experiment("titanic-classifier-training")
-
-print(f"MLflow Tracking URI: {MLFLOW_TRACKING_URI}")
 
 def load_and_preprocess_data():
     """Load and preprocess the Titanic dataset"""
@@ -67,6 +63,11 @@ def train_model(n_estimators=100, max_depth=10, min_samples_split=5, version="1.
     """Train a Random Forest model with MLflow tracking"""
     
     print(f"\n[TRAINING] Starting training for model version {version}...")
+    
+    # Initialize MLflow (lazy initialization)
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment("titanic-classifier-training")
+    print(f"MLflow Tracking URI: {MLFLOW_TRACKING_URI}")
     
     # Start MLflow run
     with mlflow.start_run(run_name=f"titanic-v{version}") as run:

@@ -1,7 +1,7 @@
 # MLOps Take-Home: Titanic Survival Predictor
 
+[![Demo Video](https://img.shields.io/badge/YouTube-Demo%20Video-red?logo=youtube)](https://youtu.be/ICTzep0wrCk)
 [![CI/CD Pipeline](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml)
-[![Deploy to Dev](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml)
 [![Docker Image](https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker)](https://github.com/nickyui99/mlops_takehome_nicholas/pkgs/container/titanic-predictor)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg?logo=python)](https://www.python.org/downloads/)
 [![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/nickyui99/mlops_takehome_nicholas)
@@ -208,13 +208,11 @@ mlops_takehome_nicholas/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Python 3.11** (standardized across all environments)
+- **Python 3.11**
 - Docker & Docker Compose
 - Git
 
-**Note**: This project uses **Docker Compose** for local development and orchestration. Kubernetes deployment files are provided for production use but are optional for local testing.
-
-**1. Clone and setup:**
+**Setup:**
 ```bash
 git clone https://github.com/nickyui99/mlops_takehome_nicholas.git
 cd mlops_takehome_nicholas
@@ -223,42 +221,19 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-**2. Train the model:**
+**Train the model:**
 ```bash
 python train/train.py
 ```
 
-**3. Start services with load balancer:**
+**Start services:**
 ```bash
 docker compose up --build
 ```
 
-**4. Test the API:**
+**Test the API:**
 ```powershell
-# Health check
 curl http://localhost:8000/healthz
-
-# Make prediction - First-class female passenger (high survival probability)
-$body = @{
-    pclass=1
-    sex="female"
-    age=29.0
-    sibsp=0
-    parch=0
-    fare=100.0
-    embarked="C"
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
-
-# Expected output:
-# {
-#   "prediction": "survived",
-#   "survival_probability": 0.92,
-#   "latency_ms": 15.23,
-#   "model_version": "v20251114_174012",
-#   "pod_name": "titanic-api"
-# }
 ```
 
 ## ✅ Required Capabilities
@@ -600,14 +575,13 @@ prometheus.io/path: "/metrics"
 - `process_cpu_seconds_total` - Process CPU usage
 - `process_resident_memory_bytes` - Memory usage
 
-**Dashboard**: Import `dashboards/titanic-dashboard.json` to visualize:
-- Request rate and latency
-- Error rates
-- Model version distribution
+### Grafana Dashboard Example
+
+![Grafana Dashboard](./GrafanaDashboard.png)
 
 **Structured Logging**: JSON logs with `request_id`, `model_version`, `pod_name`, `latency_ms`
 
-### E) Model Tracking / Monitoring
+## E) Model Tracking / Monitoring
 
 **Implementation**: ✅ **MLflow Server with Full Model Registry** 🆕
 
@@ -670,7 +644,7 @@ docker compose up mlflow -d
 # Train model: python train/train_with_mlflow.py
 ```
 
-### F) Traffic & Security
+## F) Traffic & Security
 
 **Implemented**:
 - ✅ **Input Validation**: Pydantic models enforce schema
@@ -684,7 +658,7 @@ docker compose up mlflow -d
 - Add rate limiting
 - Implement authentication/authorization
 
-### G) State & Metadata
+## G) State & Metadata
 
 **Database Schema** (`sql/schema.sql`):
 ```sql
@@ -704,7 +678,7 @@ CREATE TABLE predictions (
 docker exec -it postgres psql -U postgres -d mlops -c "SELECT * FROM predictions ORDER BY timestamp DESC LIMIT 10;"
 ```
 
-### H) Cost & Scalability
+## H) Cost & Scalability
 
 **Resource Management**:
 - **CPU**: 100m request, 200m limit per pod
@@ -725,7 +699,7 @@ kubectl autoscale deployment titanic-predictor --cpu-percent=80 --min=3 --max=10
 - Fast inference (< 50ms)
 - Efficient resource utilization
 
-### I) Rollback
+## I) Rollback
 
 
 **Version Management**:
@@ -871,52 +845,29 @@ kubectl delete deployment titanic-predictor-canary -n mlops-dev
 ```bash
 # 1. Deploy Blue environment (current production v1.0)
 kubectl apply -f deploy/k8s/blue-green/deployment-blue.yaml
-
-# 2. Create service pointing to Blue
 kubectl apply -f deploy/k8s/blue-green/service-blue.yaml
+kubectl wait --for=condition=ready pod -l version=blue -n mlops-dev --timeout=60s
 
-# 3. Verify Blue is serving traffic
-kubectl get pods -n mlops-dev -l version=blue
-kubectl port-forward svc/titanic-predictor 8000:8000 -n mlops-dev
-
-# 4. Test Blue environment
-$body = @{
-    pclass=1; sex="female"; age=29.0
-    sibsp=0; parch=0; fare=100.0; embarked="C"
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri http://localhost:8000/predict `
-  -Method Post -Body $body -ContentType "application/json"
-# Should show: "model_version": "1.0", "pod_name": "...-blue-..."
-
-# 5. Deploy Green environment (new version v2.0) in parallel
+# 2. Deploy Green environment (new version v2.0) in parallel
 kubectl apply -f deploy/k8s/blue-green/deployment-green.yaml
-
-# 6. Wait for Green to be ready
 kubectl wait --for=condition=ready pod -l version=green -n mlops-dev --timeout=120s
 
-# 7. Verify both environments are running
+# 3. Show both environments
 kubectl get pods -n mlops-dev -l app=titanic-predictor -o wide
-# Should show 3 Blue pods + 3 Green pods (6 total)
 
-# 8. Test Green internally before switching traffic
-kubectl run test-pod --image=curlimages/curl -it --rm -n mlops-dev -- sh
-# Inside test pod:
-curl http://titanic-predictor-green:8000/healthz
-
-# 9. INSTANT CUTOVER: Switch service from Blue to Green (< 5 seconds)
+# 4. Switch to Green
 kubectl patch service titanic-predictor -n mlops-dev \
   -p '{"spec":{"selector":{"version":"green"}}}'
 
-# 10. Verify traffic switch
+# 5. Verify traffic switch
 Invoke-RestMethod -Uri http://localhost:8000/predict `
   -Method Post -Body $body -ContentType "application/json"
 # Should now show: "model_version": "2.0", "pod_name": "...-green-..."
 
-# 11. Monitor Green for stability (15-30 minutes)
+# 6. Monitor Green for stability (15-30 minutes)
 python tests/test_traffic.py --requests 500
 
-# 12. If stable, remove Blue environment
+# 7. If stable, remove Blue environment
 kubectl delete deployment titanic-predictor-blue -n mlops-dev
 ```
 
@@ -939,7 +890,7 @@ Invoke-RestMethod -Uri http://localhost:8000/predict `
 - ✅ Full testing of Green before cutover
 - ✅ No impact on user experience during switch
 
-**Resource Requirements:**
+**Resource Requirements**:
 - **During Deployment**: 2x pods (both Blue and Green running)
 - **After Cleanup**: 1x pods (only active environment)
 
@@ -1059,7 +1010,7 @@ kubectl apply -f deploy/k8s/blue-green/deployment-blue.yaml
 kubectl apply -f deploy/k8s/blue-green/service-blue.yaml
 kubectl wait --for=condition=ready pod -l version=blue -n mlops-dev --timeout=60s
 
-# 2. Deploy Green
+# 2. Deploy Green environment (new version v2.0) in parallel
 echo "🟢 Deploying Green environment (v2.0)..."
 kubectl apply -f deploy/k8s/blue-green/deployment-green.yaml
 kubectl wait --for=condition=ready pod -l version=green -n mlops-dev --timeout=120s
@@ -1140,13 +1091,6 @@ python tests/test_api.py
 - ✅ Low survival probability (third-class male)
 - ✅ Response structure validation
 
-**Expected Output**:
-```
-Testing Titanic prediction API...
-Input: {'pclass': 1, 'sex': 'female', 'age': 29.0, ...}
-Response: {'prediction': 'survived', 'survival_probability': 0.92, ...}
-```
-
 ### 3. Load Balancer Tests (`tests/test_lb.py` & `tests/test_lb_proper.py`)
 
 Verifies that the load balancer correctly distributes requests across multiple API replicas.
@@ -1156,7 +1100,7 @@ Verifies that the load balancer correctly distributes requests across multiple A
 # Start services with 3 replicas
 docker compose up --build -d
 
-# Verify replicas are running
+# Verify 3 replicas are running
 docker compose ps
 
 # Test load distribution

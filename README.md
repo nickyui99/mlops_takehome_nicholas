@@ -31,7 +31,6 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
   - [📝 Notes for Reviewers](#-notes-for-reviewers)
   - [🐛 Troubleshooting](#-troubleshooting)
     - [Common Issues](#common-issues)
-  - [🤝 Contributing](#-contributing)
   - [📄 License](#-license)
 
 ## 🎯 Overview
@@ -816,15 +815,6 @@ docker compose down -v
 **Kubernetes not available:**
 - Enable Kubernetes in Docker Desktop settings (see Deployment section)
 - Verify with: `kubectl version --client`
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Run linting: `ruff check .`
-5. Submit PR with clear description
 
 ## 📄 License
 

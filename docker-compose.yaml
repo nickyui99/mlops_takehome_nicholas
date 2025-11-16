@@ -27,6 +27,7 @@ services:
       --port 5000
       --backend-store-uri sqlite:///mlflow/mlruns/mlflow.db
       --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s

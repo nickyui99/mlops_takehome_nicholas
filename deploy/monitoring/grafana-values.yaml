@@ -28,6 +28,6 @@ grafana:
           path: /var/lib/grafana/dashboards/default
   dashboards:
     default:
-      iris-dashboard:
+      titanic-dashboard:
         # Provision our repo's dashboard (uses Prometheus UID ds_prometheus)
-        url: https://raw.githubusercontent.com/nickyui99/mlops_takehome_nicholas/main/dashboards/iris-dashboard-full.json
+        url: https://raw.githubusercontent.com/nickyui99/mlops_takehome_nicholas/main/dashboards/Titanic_dashboard.json

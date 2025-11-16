@@ -22,6 +22,11 @@ airflow_home/
 # Logs
 *.log
 
+# Temporary files
+latest_run_id.txt
+*_temp.txt
+*.tmp
+
 # IDE
 .vscode/
 .idea/

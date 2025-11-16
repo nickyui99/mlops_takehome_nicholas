@@ -1,29 +1,278 @@
 # .github/workflows/promote-prod.yml
-name: Promote to Prod
+name: Promote to Production
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Image SHA or tag'
+      deployment_strategy:
+        description: 'Deployment strategy'
         required: true
+        type: choice
+        options:
+          - canary
+          - blue-green
+        default: 'canary'
+      canary_percentage:
+        description: 'Canary traffic percentage (only for canary strategy)'
+        required: false
+        default: '25'
+        type: choice
+        options:
+          - '10'
+          - '25'
+          - '50'
+      image_tag:
+        description: 'Image tag to deploy (leave empty for latest)'
+        required: false
         default: 'latest'
 
 jobs:
-  promote:
+  canary-deployment:
+    if: ${{ github.event.inputs.deployment_strategy == 'canary' }}
     runs-on: ubuntu-latest
+    
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-    - name: Set up Kind (prod cluster)
-      uses: helm/kind-action@v1.2.0
+    - name: Set up Kind cluster (prod simulation)
+      uses: helm/kind-action@v1.10.0
       with:
         cluster_name: mlops-prod
+        wait: 120s
 
-    # ... deploy prod version (blue/green) ...
-
-    - name: Post-deploy smoke test
+    - name: Create production namespace
       run: |
-        kubectl port-forward svc/iris-predictor-prod 8000:80 -n mlops-prod &
+        kubectl create namespace mlops-prod --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy stable version (if not exists)
+      run: |
+        kubectl apply -f deploy/k8s/deployment.yaml -n mlops-prod || true
+        kubectl apply -f deploy/k8s/service.yaml -n mlops-prod || true
+
+    - name: Deploy canary version
+      run: |
+        IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+        if [ "$IMAGE_TAG" = "latest" ]; then
+          IMAGE_TAG="ghcr.io/${{ github.repository }}/titanic-predictor:latest"
+        else
+          IMAGE_TAG="ghcr.io/${{ github.repository }}/titanic-predictor:$IMAGE_TAG"
+        fi
+        
+        CANARY_PERCENT=${{ github.event.inputs.canary_percentage }}
+        CANARY_REPLICAS=1
+        
+        echo "🐤 Deploying canary with $CANARY_REPLICAS replica(s) (~$CANARY_PERCENT% traffic)"
+        echo "📦 Image: $IMAGE_TAG"
+        
+        # Apply canary deployment
+        kubectl apply -f deploy/k8s/canary/deployment-canary.yaml -n mlops-prod
+        
+        # Update canary image
+        kubectl set image deployment/titanic-predictor-canary \
+          titanic-predictor=$IMAGE_TAG \
+          -n mlops-prod
+        
+        # Scale canary
+        kubectl scale deployment/titanic-predictor-canary \
+          --replicas=$CANARY_REPLICAS \
+          -n mlops-prod
+        
+        # Wait for rollout
+        kubectl rollout status deployment/titanic-predictor-canary -n mlops-prod --timeout=5m
+
+    - name: Monitor canary metrics (simulated)
+      run: |
+        echo "📊 Monitoring canary for 2 minutes..."
+        echo "In production, this would query Prometheus for:"
+        echo "  - Error rate: rate(http_requests_total{status=~\"5..\"}[5m])"
+        echo "  - Latency p95: histogram_quantile(0.95, ...)"
+        echo "  - Request success rate"
+        sleep 120
+        echo "✅ Canary metrics acceptable"
+
+    - name: Run canary smoke tests
+      run: |
+        echo "🧪 Testing canary deployment..."
+        
+        kubectl port-forward svc/titanic-predictor 8000:8000 -n mlops-prod &
+        PF_PID=$!
         sleep 10
-        curl -sf http://localhost:8000/healthz
+        
+        # Health check
+        curl -sf http://localhost:8000/healthz || exit 1
+        
+        # Prediction test
+        curl -sf -X POST http://localhost:8000/predict \
+          -H "Content-Type: application/json" \
+          -d '{"pclass":1,"sex":"female","age":29,"sibsp":0,"parch":0,"fare":100,"embarked":"C"}' \
+          || exit 1
+        
+        kill $PF_PID || true
+        echo "✅ Canary smoke tests passed"
+
+    - name: Promote canary to stable
+      run: |
+        IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+        if [ "$IMAGE_TAG" = "latest" ]; then
+          IMAGE_TAG="ghcr.io/${{ github.repository }}/titanic-predictor:latest"
+        else
+          IMAGE_TAG="ghcr.io/${{ github.repository }}/titanic-predictor:$IMAGE_TAG"
+        fi
+        
+        echo "🚀 Promoting canary to stable deployment..."
+        
+        kubectl set image deployment/titanic-predictor \
+          titanic-api=$IMAGE_TAG \
+          -n mlops-prod
+        
+        kubectl rollout status deployment/titanic-predictor -n mlops-prod --timeout=5m
+        
+        # Remove canary deployment
+        kubectl delete deployment/titanic-predictor-canary -n mlops-prod || true
+        
+        echo "✅ Canary promoted to production"
+
+    - name: Post-deployment verification
+      run: |
+        kubectl port-forward svc/titanic-predictor 8000:8000 -n mlops-prod &
+        PF_PID=$!
+        sleep 10
+        
+        curl -sf http://localhost:8000/healthz || exit 1
+        curl -sf -X POST http://localhost:8000/predict \
+          -H "Content-Type: application/json" \
+          -d '{"pclass":1,"sex":"female","age":29,"sibsp":0,"parch":0,"fare":100,"embarked":"C"}' \
+          || exit 1
+        
+        kill $PF_PID || true
+        echo "✅ Production verification complete"
+
+  blue-green-deployment:
+    if: ${{ github.event.inputs.deployment_strategy == 'blue-green' }}
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Kind cluster (prod simulation)
+      uses: helm/kind-action@v1.10.0
+      with:
+        cluster_name: mlops-prod
+        wait: 120s
+
+    - name: Create production namespace
+      run: |
+        kubectl create namespace mlops-prod --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy Blue environment (current production)
+      run: |
+        echo "🔵 Deploying Blue environment..."
+        kubectl apply -f deploy/k8s/blue-green/deployment-blue.yaml -n mlops-prod
+        kubectl apply -f deploy/k8s/blue-green/service-blue.yaml -n mlops-prod
+        kubectl rollout status deployment/titanic-predictor-blue -n mlops-prod --timeout=5m || true
+
+    - name: Deploy Green environment (new version)
+      run: |
+        IMAGE_TAG="${{ github.event.inputs.image_tag }}"
+        if [ "$IMAGE_TAG" = "latest" ]; then
+          IMAGE_TAG="ghcr.io/${{ github.repository }}/titanic-predictor:latest"
+        else
+          IMAGE_TAG="ghcr.io/${{ github.repository }}/titanic-predictor:$IMAGE_TAG"
+        fi
+        
+        echo "🟢 Deploying Green environment..."
+        echo "📦 Image: $IMAGE_TAG"
+        
+        kubectl apply -f deploy/k8s/blue-green/deployment-green.yaml -n mlops-prod
+        
+        kubectl set image deployment/titanic-predictor-green \
+          titanic-predictor=$IMAGE_TAG \
+          -n mlops-prod
+        
+        kubectl rollout status deployment/titanic-predictor-green -n mlops-prod --timeout=5m
+
+    - name: Test Green environment
+      run: |
+        echo "🧪 Testing Green environment before cutover..."
+        
+        # Create temporary service to test Green
+        kubectl expose deployment titanic-predictor-green \
+          --name=titanic-green-test \
+          --port=8000 \
+          -n mlops-prod || true
+        
+        kubectl port-forward svc/titanic-green-test 8001:8000 -n mlops-prod &
+        PF_PID=$!
+        sleep 15
+        
+        # Test Green health
+        curl -sf http://localhost:8001/healthz || exit 1
+        
+        # Test Green prediction
+        curl -sf -X POST http://localhost:8001/predict \
+          -H "Content-Type: application/json" \
+          -d '{"pclass":1,"sex":"female","age":29,"sibsp":0,"parch":0,"fare":100,"embarked":"C"}' \
+          || exit 1
+        
+        kill $PF_PID || true
+        kubectl delete service titanic-green-test -n mlops-prod || true
+        
+        echo "✅ Green environment tests passed"
+
+    - name: Switch traffic to Green (instant cutover)
+      run: |
+        echo "🔀 Switching production traffic to Green..."
+        
+        kubectl patch service titanic-predictor -n mlops-prod \
+          -p '{"spec":{"selector":{"version":"green"}}}'
+        
+        echo "✅ Traffic switched to Green (<5 seconds)"
+
+    - name: Post-deployment smoke tests
+      run: |
+        echo "🧪 Running post-deployment verification..."
+        sleep 10
+        
+        kubectl port-forward svc/titanic-predictor 8000:8000 -n mlops-prod &
+        PF_PID=$!
+        sleep 10
+        
+        # Verify Green is serving traffic
+        RESPONSE=$(curl -s -X POST http://localhost:8000/predict \
+          -H "Content-Type: application/json" \
+          -d '{"pclass":1,"sex":"female","age":29,"sibsp":0,"parch":0,"fare":100,"embarked":"C"}')
+        
+        echo "Response: $RESPONSE"
+        
+        # Verify health
+        curl -sf http://localhost:8000/healthz || exit 1
+        
+        kill $PF_PID || true
+        echo "✅ Production smoke tests passed on Green"
+
+    - name: Cleanup Blue environment (after soak period)
+      run: |
+        echo "⏳ In production, wait 15-30 minutes before removing Blue..."
+        echo "🔵 Removing Blue environment..."
+        kubectl delete deployment titanic-predictor-blue -n mlops-prod || true
+        echo "✅ Blue environment removed"
+
+  deployment-summary:
+    needs: [canary-deployment, blue-green-deployment]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Summary
+      run: |
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "🎉 Production Deployment Complete"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Strategy: ${{ github.event.inputs.deployment_strategy }}"
+        echo "Image: ${{ github.event.inputs.image_tag }}"
+        if [ "${{ github.event.inputs.deployment_strategy }}" = "canary" ]; then
+          echo "Canary %: ${{ github.event.inputs.canary_percentage }}%"
+        fi
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

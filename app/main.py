@@ -43,15 +43,22 @@ mlflow_run_id = None
 async def lifespan(app: FastAPI):
     global model, model_version, model_metadata, mlflow_run_id
 
-    # Configure MLflow
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    mlflow.set_experiment("titanic-classifier-serving")
-    
-    logger.info(f"MLflow tracking URI: {MLFLOW_TRACKING_URI}")
-
-    # Start MLflow run for this service instance
-    mlflow_run = mlflow.start_run(run_name=f"serving-{POD_NAME}")
-    mlflow_run_id = mlflow_run.info.run_id
+    # Configure MLflow with error handling
+    try:
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        logger.info(f"MLflow tracking URI: {MLFLOW_TRACKING_URI}")
+        
+        # Try to set experiment (may fail if MLflow server not ready)
+        mlflow.set_experiment("titanic-classifier-serving")
+        
+        # Start MLflow run for this service instance
+        mlflow_run = mlflow.start_run(run_name=f"serving-{POD_NAME}")
+        mlflow_run_id = mlflow_run.info.run_id
+        logger.info(f"✅ MLflow tracking initialized", mlflow_run_id=mlflow_run_id)
+    except Exception as e:
+        logger.warning(f"MLflow tracking unavailable (non-critical): {e}", error=str(e))
+        print(f"⚠️  MLflow tracking unavailable: {e}")
+        mlflow_run_id = None
     
     try:
         init_db()
@@ -61,17 +68,18 @@ async def lifespan(app: FastAPI):
         model_version = model_metadata.get("model_version", "unknown")
         
         # Log model metadata to MLflow (with error handling)
-        try:
-            mlflow.log_param("pod_name", POD_NAME)
-            mlflow.log_param("model_version", model_version)
-            mlflow.log_param("model_name", os.getenv("MODEL_NAME", "titanic-classifier"))
-            # Log metadata as text instead of dict to avoid permission issues
-            import json
-            metadata_str = json.dumps(model_metadata, indent=2)
-            mlflow.log_text(metadata_str, "model_metadata.txt")
-        except Exception as e:
-            logger.warning(f"Failed to log to MLflow: {e}", error=str(e))
-            print(f"⚠️  MLflow logging failed (non-critical): {e}")
+        if mlflow_run_id:
+            try:
+                mlflow.log_param("pod_name", POD_NAME)
+                mlflow.log_param("model_version", model_version)
+                mlflow.log_param("model_name", os.getenv("MODEL_NAME", "titanic-classifier"))
+                # Log metadata as text instead of dict to avoid permission issues
+                import json
+                metadata_str = json.dumps(model_metadata, indent=2)
+                mlflow.log_text(metadata_str, "model_metadata.txt")
+            except Exception as e:
+                logger.warning(f"Failed to log to MLflow: {e}", error=str(e))
+                print(f"⚠️  MLflow logging failed (non-critical): {e}")
         
         logger.info(f"✅ Model loaded. Version: {model_version}", 
                    model_version=model_version, 
@@ -81,8 +89,12 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         # End MLflow run when service shuts down
-        mlflow.end_run()
-        logger.info("MLflow run ended")
+        if mlflow_run_id:
+            try:
+                mlflow.end_run()
+                logger.info("MLflow run ended")
+            except Exception as e:
+                logger.warning(f"Failed to end MLflow run: {e}")
 
 app = FastAPI(lifespan=lifespan)
 

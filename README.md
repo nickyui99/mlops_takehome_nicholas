@@ -1,5 +1,12 @@
 # MLOps Take-Home: Titanic Survival Predictor
 
+[![CI/CD Pipeline](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml)
+[![Deploy to Dev](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml)
+[![Docker Image](https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker)](https://github.com/nickyui99/mlops_takehome_nicholas/pkgs/container/titanic-predictor)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg?logo=python)](https://www.python.org/downloads/)
+[![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/nickyui99/mlops_takehome_nicholas)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Production-ready ML system demonstrating end-to-end MLOps practices with load balancing, orchestration, CI/CD, and observability.
 
 ## 📋 Table of Contents
@@ -20,6 +27,20 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
     - [G) State \& Metadata](#g-state--metadata)
     - [H) Cost \& Scalability](#h-cost--scalability)
     - [I) Rollback](#i-rollback)
+  - [🎯 Advanced Deployment Strategies](#-advanced-deployment-strategies)
+    - [Canary Deployment](#canary-deployment)
+      - [Quick Start: Canary Deployment](#quick-start-canary-deployment)
+      - [Canary Rollback (If Issues Detected)](#canary-rollback-if-issues-detected)
+    - [Blue-Green Deployment](#blue-green-deployment)
+      - [Quick Start: Blue-Green Deployment](#quick-start-blue-green-deployment)
+      - [Blue-Green Rollback (If Issues Detected)](#blue-green-rollback-if-issues-detected)
+    - [Strategy Comparison](#strategy-comparison)
+    - [Deployment Workflow Recommendations](#deployment-workflow-recommendations)
+      - [Production Deployment Pipeline](#production-deployment-pipeline)
+      - [Automated Rollback Triggers](#automated-rollback-triggers)
+    - [Complete Demo Scripts](#complete-demo-scripts)
+      - [Full Canary Deployment Demo](#full-canary-deployment-demo)
+      - [Full Blue-Green Deployment Demo](#full-blue-green-deployment-demo)
   - [🧪 Testing](#-testing)
     - [1. API Unit Tests (`tests/test_api.py`)](#1-api-unit-tests-teststest_apipy)
     - [2. Load Balancer Tests (`tests/test_lb.py`)](#2-load-balancer-tests-teststest_lbpy)
@@ -39,7 +60,7 @@ This project implements a complete MLOps pipeline for a Titanic survival predict
 ✅ **Orchestration** - Docker Compose / Kubernetes with 3-replica deployment  
 ✅ **CI/CD** - GitHub Actions for automated testing and deployment  
 ✅ **Observability** - Prometheus + Grafana monitoring stack  
-✅ **Model Tracking** - **MLflow for experiment tracking, model versioning, and registry** 🆕  
+✅ **Model Tracking** - **MLflow for experiment tracking, model versioning, and registry**  
 ✅ **Traffic & Security** - Input validation, health checks, proper error handling  
 ✅ **State & Metadata** - PostgreSQL for prediction logging  
 ✅ **Cost & Scalability** - Resource limits, horizontal scaling ready  
@@ -50,61 +71,134 @@ This project implements a complete MLOps pipeline for a Titanic survival predict
 ## 🏗️ Architecture
 
 ```
-┌─────────────┐    ┌──────────────┐    ┌───────────────┐
-│   Client    │───▶│     NGINX    │───▶│   FastAPI     │
-│             │    │Load Balancer │    │  (3 replicas) │
-└─────────────┘    └──────────────┘    └───────┬───────┘
+                                    ┌──────────────────────────┐
+                                    │   GitHub Actions CI/CD   │
+                                    │  (Build, Test, Deploy)   │
+                                    └────────────┬─────────────┘
+                                                 │
+┌─────────────┐    ┌──────────────┐    ┌───────┴───────────┐
+│   Client    │───▶│     NGINX    │───▶│     FastAPI       │
+│             │    │Load Balancer │    │   (3 replicas)    │
+└─────────────┘    └──────────────┘    └───────┬───────────┘
                                                │
-                    ┌──────────────────────────┼──────────────────┐
-                    ▼                          ▼                  ▼
-              ┌──────────┐              ┌───────────┐      ┌──────────┐
-              │PostgreSQL│              │ MLflow 🆕 │      │Prometheus│
-              │(Pred Log)│              │(Model Reg)│      │(Metrics) │
-              └──────────┘              └─────┬─────┘      └────┬─────┘
-                                              │                 │
-                                              └────────┬────────┘
-                                                       ▼
-                                                  ┌─────────┐
-                                                  │ Grafana │
-                                                  └─────────┘
+                    ┌──────────────────────────┼────────────────────────┐
+                    ▼                          ▼                        ▼
+              ┌──────────┐              ┌───────────┐            ┌──────────┐
+              │PostgreSQL│              │  MLflow   │            │Prometheus│
+              │(Pred Log)│              │  Server   │            │(Metrics) │
+              └──────────┘              │(Model Reg)│            └────┬─────┘
+                                        │(Artifacts)│                 │
+                                        └─────┬─────┘                 │
+                    ┌─────────────────────────┴─────────────┬─────────┘
+                    ▼                                       ▼
+              ┌──────────┐                            ┌─────────┐
+              │ Airflow  │                            │ Grafana │
+              │(Pipeline)│                            │(Dashbrd)│
+              └──────────┘                            └─────────┘
 ```
+
+**Key Components**:
+- **NGINX**: Reverse proxy with load balancing across 3 API replicas
+- **FastAPI**: Prediction service with health checks and metrics
+- **PostgreSQL**: Persistent storage for prediction logs and metadata
+- **MLflow**: Complete ML lifecycle management (tracking, registry, artifacts)
+- **Airflow**: Workflow orchestration for training pipelines
+- **Prometheus**: Metrics collection and alerting
+- **Grafana**: Monitoring dashboards and visualization
+- **GitHub Actions**: Automated CI/CD pipelines
 
 ## 📁 Repository Structure
 
 ```
-├── app/                      # FastAPI application
-│   ├── main.py              # API endpoints & middleware
-│   ├── model_loader.py      # Model loading logic
-│   ├── model.py             # Model wrapper
-│   └── db.py                # PostgreSQL connection
-├── train/
-│   └── train.py             # Training script with MLflow
-├── tests/
-│   ├── test_api.py          # API unit tests
-│   └── test_lb.py           # Load balancer test
+mlops_takehome_nicholas/
+├── .github/
+│   └── workflows/               # CI/CD pipelines
+│       ├── ci.yml              # Lint, test, build, push
+│       ├── deploy-dev.yml      # Deploy to dev cluster
+│       └── promote-prod.yml    # Promote to production
+│
+├── airflow-data/               # Airflow metadata and logs
+│   ├── dags/                   # Airflow DAG definitions
+│   ├── logs/                   # Execution logs
+│   ├── mlruns/                 # MLflow runs from Airflow
+│   ├── plugins/                # Custom Airflow plugins
+│   ├── artifacts/              # Model artifacts from pipeline runs
+│   ├── train/                  # Training scripts for Airflow
+│   └── airflow.cfg             # Airflow configuration
+│
+├── app/                        # FastAPI application
+│   ├── main.py                 # API endpoints & middleware
+│   ├── model_loader.py         # Model loading logic
+│   ├── model.py                # Model wrapper
+│   └── db.py                   # PostgreSQL connection
+│
+├── artifacts/                  # Saved model artifacts (MLflow)
+│   └── titanic-classifier/     # Titanic model artifacts
+│
+├── dashboards/                 # Grafana dashboards (JSON)
+│   └── Titanic_dashboard.json  # Main monitoring dashboard
+│
 ├── deploy/
-│   ├── k8s/                 # Kubernetes manifests
-│   │   ├── deployment.yaml  # Pod deployment (3 replicas)
-│   │   ├── service.yaml     # ClusterIP service
-│   │   ├── ingress.yaml     # Ingress configuration
-│   │   └── namespace.yaml   # Namespace definition
-│   └── monitoring/          # Prometheus & Grafana configs
+│   ├── k8s/                    # Kubernetes manifests
+│   │   ├── namespace.yaml      # Namespace definition
+│   │   ├── deployment.yaml     # Pod deployment (3 replicas)
+│   │   ├── service.yaml        # ClusterIP service
+│   │   ├── ingress.yaml        # Ingress configuration
+│   │   ├── blue-green/         # Blue-green deployment configs
+│   │   └── canary/             # Canary deployment configs
+│   └── monitoring/             # Prometheus & Grafana configs
 │       ├── prometheus-values.yaml
-│       └── grafana-values.yaml
-├── pipelines/
-│   └── titanic_training_dag.py # Airflow DAG
-├── .github/workflows/       # CI/CD pipelines
-│   ├── ci.yml              # Lint, test, build, push
-│   ├── deploy-dev.yml      # Deploy to dev cluster
-│   └── promote-prod.yml    # Promote to production
-├── artifacts/               # Saved model artifacts
-├── dashboards/              # Grafana dashboards (JSON)
-├── sql/                     # Database schemas
-├── Dockerfile               # Container image
-├── docker-compose.yaml      # Multi-service orchestration
-├── requirements.txt         # Python dependencies
-└── MODEL_CARD.md            # Model documentation
+│       ├── prometheus-scrape-config.yaml
+│       ├── grafana-values.yaml
+│       └── servicemonitor.yaml
+│
+├── mlflow/                     # MLflow server data
+│   ├── artifacts/              # Model artifacts storage
+│   └── mlruns/                 # Experiment runs metadata
+│
+├── mlruns/                     # Local MLflow runs (training)
+│   ├── 1/                      # Experiment 1
+│   └── 2/                      # Experiment 2
+│       └── models/             # Registered models
+│
+├── pipelines/                  # Airflow DAG definitions
+│   └── titanic_training_dag.py # Titanic model training pipeline
+│
+├── sql/
+│   └── schema.sql              # Database schema definitions
+│
+├── tests/                      # Test suite
+│   ├── test_api.py             # API unit tests
+│   ├── test_lb.py              # Load balancer tests
+│   └── test_traffic.py         # Traffic generation tests
+│
+├── train/
+│   ├── train.py                # Standard training script
+│   └── train_with_mlflow.py    # MLflow-integrated training
+│
+├── docker-compose.yaml         # Main orchestration (API, DB, MLflow)
+├── docker-compose.dev.yaml     # Development configuration
+├── docker-compose.airflow.yaml # Airflow orchestration
+├── Dockerfile                  # Container image definition
+├── nginx.conf                  # NGINX load balancer config
+├── requirements.txt            # Python dependencies
+│
+├── MODEL_CARD.md               # Model documentation
+├── README.md                   # Main documentation (this file)
+├── README_MLFLOW.md            # MLflow setup and integration guide
+├── ROLLBACK_PROCEDURES.md      # Detailed rollback documentation
+├── ROLLBACK_QUICK_REFERENCE.md # Quick rollback reference card
+└── VIDEO_DEMO_GUIDE.md         # Video demonstration guide
 ```
+
+**Key Directory Purposes**:
+- **app/**: Core prediction API service
+- **airflow-data/**: Airflow orchestration and pipeline execution
+- **mlflow/ & mlruns/**: ML experiment tracking and model registry
+- **deploy/**: Kubernetes and monitoring configurations
+- **pipelines/**: Workflow definitions for training automation
+- **tests/**: Comprehensive test suite for all components
+- **train/**: Model training scripts
 
 ## 🚀 Quick Start
 
@@ -206,10 +300,10 @@ docker compose up --build -d
 docker compose ps
 
 # Scale up/down if needed
-docker compose up --scale iris-api=5 -d
+docker compose up --scale titanic-api=5 -d
 
 # Check logs
-docker compose logs -f iris-api
+docker compose logs -f titanic-api
 
 # Stop all services
 docker compose down
@@ -1038,7 +1132,7 @@ docker compose down -v
 
 **Design Decisions:**
 1. **SQLite for MLflow**: Simple local setup; would use remote tracking server in production
-2. **No DVC**: Iris dataset is embedded in sklearn and deterministic; DVC not needed for this scale
+2. **No DVC**: Titanic dataset is from seaborn and deterministic; DVC not needed for this scale
 3. **Logistic Regression**: Simple, interpretable baseline model
 4. **3 Replicas**: Balances availability with resource usage
 

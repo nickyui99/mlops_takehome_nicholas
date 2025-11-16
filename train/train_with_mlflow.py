@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 """
 Training script with MLflow tracking for Titanic Classifier
 This demonstrates model versioning and experiment tracking
 """
 import os
+import sys
 import mlflow
 import mlflow.sklearn
 import pandas as pd
@@ -13,6 +15,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
+
+# Configure stdout encoding for Windows
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # Configure MLflow
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -27,7 +33,7 @@ def load_and_preprocess_data():
     data_path = Path(__file__).parent.parent / "datasets" / "titanic_train.csv"
     
     if not data_path.exists():
-        print(f"⚠️  Dataset not found at {data_path}")
+        print(f"[WARNING] Dataset not found at {data_path}")
         print("Creating synthetic data for demonstration...")
         # Create synthetic data for demo
         import numpy as np
@@ -60,13 +66,13 @@ def load_and_preprocess_data():
 def train_model(n_estimators=100, max_depth=10, min_samples_split=5, version="1.0"):
     """Train a Random Forest model with MLflow tracking"""
     
-    print(f"\n🚀 Starting training for model version {version}...")
+    print(f"\n[TRAINING] Starting training for model version {version}...")
     
     # Start MLflow run
     with mlflow.start_run(run_name=f"titanic-v{version}") as run:
         # Load data
         X_train, X_test, y_train, y_test = load_and_preprocess_data()
-        print(f"✅ Data loaded: {len(X_train)} training samples, {len(X_test)} test samples")
+        print(f"[SUCCESS] Data loaded: {len(X_train)} training samples, {len(X_test)} test samples")
         
         # Imputation and Scaling
         imputer = SimpleImputer(strategy='median')
@@ -91,7 +97,7 @@ def train_model(n_estimators=100, max_depth=10, min_samples_split=5, version="1.
             n_jobs=-1
         )
         
-        print(f"🔧 Training model with n_estimators={n_estimators}, max_depth={max_depth}...")
+        print(f"[TRAINING] Training model with n_estimators={n_estimators}, max_depth={max_depth}...")
         model.fit(X_train_scaled, y_train)
         
         # Make predictions
@@ -105,7 +111,7 @@ def train_model(n_estimators=100, max_depth=10, min_samples_split=5, version="1.
         recall = recall_score(y_test, y_pred_test)
         f1 = f1_score(y_test, y_pred_test)
         
-        print(f"📊 Results:")
+        print(f"[RESULTS] Model Performance:")
         print(f"   Train Accuracy: {train_accuracy:.4f}")
         print(f"   Test Accuracy:  {test_accuracy:.4f}")
         print(f"   Precision:      {precision:.4f}")
@@ -154,9 +160,9 @@ def train_model(n_estimators=100, max_depth=10, min_samples_split=5, version="1.
         with open(artifacts_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
         
-        print(f"\n✅ Model saved to {artifacts_dir}")
-        print(f"📝 MLflow Run ID: {run.info.run_id}")
-        print(f"🔗 View in MLflow UI: {MLFLOW_TRACKING_URI}/#/experiments/{run.info.experiment_id}/runs/{run.info.run_id}")
+        print(f"\n[SUCCESS] Model saved to {artifacts_dir}")
+        print(f"[INFO] MLflow Run ID: {run.info.run_id}")
+        print(f"[INFO] View in MLflow UI: {MLFLOW_TRACKING_URI}/#/experiments/{run.info.experiment_id}/runs/{run.info.run_id}")
         
         return run.info.run_id
 

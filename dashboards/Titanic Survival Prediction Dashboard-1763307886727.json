@@ -20,11 +20,11 @@
   "graphTooltip": 0,
   "id": 0,
   "links": [],
+  "liveNow": true,
   "panels": [
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "ds_prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -106,8 +106,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "df43hcovir1tse"
+            "type": "prometheus"
           },
           "editorMode": "builder",
           "expr": "sum(rate(http_requests_total[1m]))",
@@ -123,8 +122,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "ds_prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -174,8 +172,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "df43hcovir1tse"
+            "type": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
@@ -187,52 +184,11 @@
         }
       ],
       "title": "Request Latency (p95, p99)",
-      "type": "stat",
-      "alert": {
-        "alertRuleTags": {},
-        "conditions": [
-          {
-            "evaluator": {
-              "params": [
-                1
-              ],
-              "type": "gt"
-            },
-            "operator": {
-              "type": "and"
-            },
-            "query": {
-              "params": [
-                "A",
-                "5m",
-                "now"
-              ]
-            },
-            "reducer": {
-              "params": [],
-              "type": "last"
-            },
-            "type": "query"
-          }
-        ],
-        "data": [
-          {
-            "refId": "A"
-          }
-        ],
-        "executionErrorState": "alerting",
-        "for": "5m",
-        "frequency": "1m",
-        "handler": 1,
-        "name": "High Latency",
-        "noDataState": "no_data",
-        "notifications": []
-      }
+      "type": "stat"
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "ds_prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -314,8 +270,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "df43hcovir1tse"
+            "type": "prometheus"
           },
           "editorMode": "builder",
           "expr": "( sum(rate(http_requests_total{status=~\"5..\"}[1m])) \r\n  / \r\n  sum(rate(http_requests_total[1m])) \r\n) * 100",
@@ -331,8 +286,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "ds_prometheus"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -411,11 +365,10 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "ds_prometheus"
+            "type": "prometheus"
           },
           "editorMode": "code",
-          "expr": "process_resident_memory_bytes",
+          "expr": "container_memory_usage_bytes{namespace=\"mlops-dev\", pod=~\"titanic-predictor.*\"}",
           "legendFormat": "{{pod}}",
           "range": true,
           "refId": "A"
@@ -426,8 +379,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "df43hcovir1tse"
+        "type": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -506,11 +458,10 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "df43hcovir1tse"
+            "type": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(process_cpu_seconds_total[1m])",
+          "expr": "rate(container_cpu_usage_seconds_total{namespace=\"mlops-dev\",pod=~\"titanic-predictor.*\"}[1m])",
           "hide": false,
           "instant": false,
           "legendFormat": "__auto",
@@ -541,5 +492,5 @@
   "timezone": "browser",
   "title": "Titanic Survival Prediction Dashboard",
   "uid": "titanic-prediction-service",
-  "version": 11
+  "version": 4
 }

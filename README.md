@@ -3,7 +3,7 @@
 [![CI/CD Pipeline](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml)
 [![Deploy to Dev](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml)
 [![Docker Image](https://img.shields.io/badge/docker-ghcr.io-blue?logo=docker)](https://github.com/nickyui99/mlops_takehome_nicholas/pkgs/container/titanic-predictor)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg?logo=python)](https://www.python.org/downloads/)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg?logo=python)](https://www.python.org/downloads/)
 [![Coverage](https://img.shields.io/badge/coverage-91%25-brightgreen)](https://github.com/nickyui99/mlops_takehome_nicholas)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -114,9 +114,9 @@ This project implements a complete MLOps pipeline for a Titanic survival predict
 mlops_takehome_nicholas/
 ├── .github/
 │   └── workflows/               # CI/CD pipelines
-│       ├── ci.yml              # Lint, test, build, push
-│       ├── deploy-dev.yml      # Deploy to dev cluster
-│       └── promote-prod.yml    # Promote to production
+│       ├── ci.yml              # Lint, test, build, push (Python 3.11)
+│       ├── deploy-dev.yml      # Dev deployment simulation
+│       └── promote-prod.yml    # Prod promotion simulation (canary/blue-green)
 │
 ├── airflow-data/               # Airflow metadata and logs
 │   ├── dags/                   # Airflow DAG definitions
@@ -187,9 +187,9 @@ mlops_takehome_nicholas/
 ├── requirements.txt            # Python dependencies
 │
 ├── .github/workflows/          # CI/CD pipelines
-│   ├── ci.yml                  # Main CI/CD workflow (lint, test, build, push)
-│   ├── deploy-dev.yml          # Deploy to dev environment
-│   └── promote-prod.yml        # Production promotion (canary/blue-green)
+│   ├── ci.yml                  # Main CI/CD workflow (lint, test, build, push to GHCR)
+│   ├── deploy-dev.yml          # Dev deployment simulation (validates manifests)
+│   └── promote-prod.yml        # Prod promotion simulation (canary/blue-green strategies)
 │
 ├── MODEL_CARD.md               # Model documentation
 ├── README.md                   # Main documentation (this file)
@@ -208,8 +208,9 @@ mlops_takehome_nicholas/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.10+
+- **Python 3.11** (standardized across all environments)
 - Docker & Docker Compose
+- Git
 
 **Note**: This project uses **Docker Compose** for local development and orchestration. Kubernetes deployment files are provided for production use but are optional for local testing.
 
@@ -437,7 +438,10 @@ Triggers: After CI/CD Pipeline succeeds on main
 └─ Simulate prediction smoke test
 ```
 
-**Note**: This workflow simulates deployment commands without requiring an actual Kubernetes cluster. In production, replace simulation steps with real kubectl commands.
+**⚠️ Important**: This workflow **simulates** deployment commands without requiring a real Kubernetes cluster. This is intentional for GitHub Actions environments where K8s API servers are not available. In a production environment with actual K8s cluster access:
+- Replace `echo "Would run: kubectl..."` with actual `kubectl` commands
+- Configure cluster credentials (kubeconfig, service accounts)
+- Use real health checks and smoke tests
 
 **Status**: [![Deploy to Dev](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml)
 
@@ -445,19 +449,33 @@ Triggers: After CI/CD Pipeline succeeds on main
 Manual production promotion with deployment strategy choice:
 
 ```yaml
-Triggers: Manual workflow_dispatch
+Triggers: Manual workflow_dispatch (manual approval required)
+Input Parameters:
+  - image_tag: Container image version to deploy
+  - deployment_strategy: canary OR blue-green
+  - canary_percentage: Traffic % for canary (if canary chosen)
+
 Strategy Options:
-├─ Canary Deployment (gradual rollout: 25% → 100%)
-│  ├─ Deploy canary version
-│  ├─ Monitor metrics for 2 minutes
-│  ├─ Promote to stable if healthy
+├─ Canary Deployment (gradual rollout)
+│  ├─ Deploy canary version with X% traffic
+│  ├─ Monitor Prometheus metrics for 2 minutes
+│  ├─ Run smoke tests on canary
+│  ├─ Promote to stable (100%) if healthy
 │  └─ Rollback if issues detected
 └─ Blue-Green Deployment (instant cutover)
-   ├─ Deploy green environment
-   ├─ Test green environment
-   ├─ Switch traffic to green
-   └─ Keep blue for rollback
+   ├─ Deploy green environment (new version)
+   ├─ Test green environment thoroughly
+   ├─ Switch traffic to green (<5s downtime)
+   ├─ Keep blue alive for fast rollback
+   └─ Remove blue after soak period (15-30 min)
 ```
+
+**⚠️ Important**: Like deploy-dev, this workflow **simulates** production deployments. In a real production environment:
+- Connect to production K8s cluster with proper RBAC
+- Use real Prometheus for canary metrics analysis
+- Implement actual traffic splitting (Istio, Linkerd, or K8s Ingress)
+- Set up automated rollback triggers based on error rates
+- Integrate with incident management tools (PagerDuty, etc.)
 
 **View Workflows**: [GitHub Actions](https://github.com/nickyui99/mlops_takehome_nicholas/actions)
 
@@ -524,11 +542,19 @@ python train/train_with_mlflow.py --version 2.0
 ```
 
 **Model Versioning Workflow**:
-1. Train new model with MLflow tracking
+1. Train new model with MLflow tracking (Python 3.11)
 2. Compare metrics in MLflow UI
 3. Update `MODEL_VERSION` in docker-compose.yaml
 4. Restart services to deploy new version
 5. Rollback by reverting `MODEL_VERSION` if needed
+
+**⚠️ Python Version Standardization**: This project uses **Python 3.11** across all environments:
+- Training scripts: Python 3.11.9
+- Docker container: `python:3.11-slim` base image
+- GitHub Actions CI/CD: Python 3.11
+- Model artifacts are Python version-specific (pickle files)
+
+**Model Loading**: The API uses direct `joblib` loading instead of MLflow's `pyfunc.load_model()` for reliability and to avoid cloudpickle deserialization issues across Python versions
 
 **Serving Metrics** (logged per API replica):
 - `prediction_latency_ms`: Real-time prediction latency
@@ -1239,14 +1265,26 @@ docker compose down -v
 - Add horizontal pod autoscaling (HPA)
 
 **Recent Improvements:**
+- ✅ **Python 3.11 standardization** across all environments (training, Docker, CI/CD)
+- ✅ **Fixed model loading** with direct joblib approach (bypasses MLflow cloudpickle issues)
+- ✅ **Simulation-only CI/CD workflows** (no real K8s cluster required for GitHub Actions)
+- ✅ **Flexible K8s namespaces** (removed hardcoded namespace values from manifests)
 - ✅ Fixed Airflow 2.10.x RecursionError with subprocess isolation and logging suppression
 - ✅ Enhanced Docker build process with proper `.dockerignore`
 - ✅ Improved documentation for multi-platform support (Windows PowerShell + Linux/Mac)
-- ✅ Added comprehensive troubleshooting documentation in `AIRFLOW_ISSUE_ANALYSIS.md`
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
+
+**Model pickle deserialization errors:**
+- **Symptom**: `_pickle.UnpicklingError: invalid load key` or version mismatch errors
+- **Cause**: Python version mismatch between training and serving environments
+- **Solution**: This project uses **Python 3.11** across all environments:
+  - Training: Ensure you're using Python 3.11 (`python --version`)
+  - Docker: Uses `python:3.11-slim` base image
+  - CI/CD: Configured for Python 3.11
+- **Note**: Pickle files are Python version-specific. Always use matching versions.
 
 **Airflow DAG fails with zombie task detection:**
 - See [AIRFLOW_ISSUE_ANALYSIS.md](AIRFLOW_ISSUE_ANALYSIS.md) for detailed analysis
@@ -1266,6 +1304,12 @@ docker compose down -v
 **Kubernetes not available:**
 - Enable Kubernetes in Docker Desktop settings (see Deployment section)
 - Verify with: `kubectl version --client`
+
+**GitHub Actions workflows failing with kubectl errors:**
+- **Expected**: Workflows are intentionally simulation-only
+- **deploy-dev.yml** and **promote-prod.yml** use echo commands to show what would run
+- In production: Replace simulations with real kubectl commands and configure cluster credentials
+- See workflow files for "Would run:" simulation patterns
 
 ## 📄 License
 

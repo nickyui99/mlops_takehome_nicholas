@@ -8,10 +8,13 @@ metadata:
     prometheus.io/port: "8000"
     prometheus.io/path: "/metrics"
 spec:
+  type: NodePort
+  sessionAffinity: None
   selector:
     app: titanic-predictor
   ports:
     - protocol: TCP
       port: 8000
       targetPort: 8000
+      nodePort: 30800
       name: http

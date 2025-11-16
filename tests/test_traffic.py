@@ -16,7 +16,7 @@ from statistics import mean, median
 class TrafficGenerator:
     """Generate traffic to the prediction API for metrics testing."""
     
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://localhost:30800"):
         self.base_url = base_url
         self.results: List[Dict] = []
         
@@ -228,13 +228,13 @@ def main():
     )
     parser.add_argument(
         "--url",
-        default="http://localhost:8000",
-        help="Base URL of the API (default: http://localhost:8000)"
+        default="http://localhost:30800",
+        help="Base URL of the API (default: http://localhost:30800 for NodePort)"
     )
     parser.add_argument(
         "--requests",
         type=int,
-        default=1000,
+        default=100,
         help="Number of requests to send (default: 100)"
     )
     parser.add_argument(
@@ -271,7 +271,8 @@ def main():
         print(f"❌ Error: API at {args.url} is not responding to health checks")
         print("   Make sure the service is running:")
         print("   - Local: docker compose up")
-        print("   - Kubernetes: kubectl port-forward svc/titanic-predictor-svc 8000:8000 -n mlops-dev")
+        print("   - Kubernetes NodePort: Service should be accessible at localhost:30800")
+        print("   - Kubernetes port-forward: kubectl port-forward svc/titanic-predictor 8000:8000 -n mlops-dev")
         return 1
     
     print("✓ API is healthy\n")

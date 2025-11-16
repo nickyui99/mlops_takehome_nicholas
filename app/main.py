@@ -170,12 +170,14 @@ async def predict(request: Request, input: TitanicInput):
     PREDICTION_LATENCY.labels(model_version=model_version).observe(latency_ms / 1000)
     
     # Log to MLflow (metrics only, not individual predictions to avoid overwhelming the system)
-    try:
-        with mlflow.start_run(run_id=mlflow_run_id):
-            mlflow.log_metric(f"prediction_latency_ms", latency_ms, step=int(time.time()))
-            mlflow.log_metric(f"survival_probability", survival_prob, step=int(time.time()))
-    except Exception as e:
-        logger.warning("mlflow_log_failed", error=str(e))
+    # Skip MLflow logging if run_id is None or if MLflow is unavailable to prevent blocking
+    if mlflow_run_id:
+        try:
+            with mlflow.start_run(run_id=mlflow_run_id):
+                mlflow.log_metric(f"prediction_latency_ms", latency_ms, step=int(time.time()))
+                mlflow.log_metric(f"survival_probability", survival_prob, step=int(time.time()))
+        except Exception as e:
+            logger.warning("mlflow_log_failed", error=str(e))
 
     print(f"Model version: {model_version}, Prediction: {prediction} ({survival_prob:.2%}), Latency: {latency_ms:.2f}ms")
 

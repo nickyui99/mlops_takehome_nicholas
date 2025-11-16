@@ -66,6 +66,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     
+    permissions:
+      contents: read
+      packages: write
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -80,27 +84,23 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ghcr.io/${{ github.repository }}/titanic-predictor
-        tags: |
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-          type=raw,value={{branch}}-latest
+    - name: Convert repository name to lowercase
+      id: repo
+      run: echo "repo_lowercase=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
         context: .
         push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        tags: |
+          ghcr.io/${{ steps.repo.outputs.repo_lowercase }}:latest
+          ghcr.io/${{ steps.repo.outputs.repo_lowercase }}:${{ github.sha }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
     - name: Output image tags
       run: |
         echo "✅ Docker image built and pushed successfully"
-        echo "📦 Image tags: ${{ steps.meta.outputs.tags }}"
+        echo "📦 Image: ghcr.io/${{ steps.repo.outputs.repo_lowercase }}:latest"
+        echo "📦 SHA tag: ghcr.io/${{ steps.repo.outputs.repo_lowercase }}:${{ github.sha }}"

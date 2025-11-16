@@ -20,7 +20,10 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
   - [✅ Required Capabilities](#-required-capabilities)
     - [A) Load Balancer (must-have)](#a-load-balancer-must-have)
     - [B) Orchestration](#b-orchestration)
-    - [C) CI/CD (GitHub Actions only)](#c-cicd-github-actions-only)
+    - [C) CI/CD (GitHub Actions)](#c-cicd-github-actions)
+      - [1. **CI/CD Pipeline** (`.github/workflows/ci.yml`)](#1-cicd-pipeline-githubworkflowsciyml)
+      - [2. **Deploy to Dev** (`.github/workflows/deploy-dev.yml`)](#2-deploy-to-dev-githubworkflowsdeploy-devyml)
+      - [3. **Promote to Production** (`.github/workflows/promote-prod.yml`)](#3-promote-to-production-githubworkflowspromote-prodyml)
     - [D) Observability (Grafana + Prometheus)](#d-observability-grafana--prometheus)
     - [E) Model Tracking / Monitoring](#e-model-tracking--monitoring)
     - [F) Traffic \& Security](#f-traffic--security)
@@ -44,12 +47,10 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
   - [🧪 Testing](#-testing)
     - [1. CI Unit Tests (GitHub Actions)](#1-ci-unit-tests-github-actions)
     - [2. Integration Tests (Docker/K8s)](#2-integration-tests-dockerk8s)
-    - [3. Load Balancer Tests (`tests/test_lb.py`)](#3-load-balancer-tests-teststest_lbpy)
+    - [3. Load Balancer Tests (`tests/test_lb.py` \& `tests/test_lb_proper.py`)](#3-load-balancer-tests-teststest_lbpy--teststest_lb_properpy)
     - [4. Traffic Generation Tests (`tests/test_traffic.py`)](#4-traffic-generation-tests-teststest_trafficpy)
     - [Running All Tests](#running-all-tests)
     - [Test Environment Setup](#test-environment-setup)
-  - [📝 Notes for Reviewers](#-notes-for-reviewers)
-  - [🐛 Troubleshooting](#-troubleshooting)
   - [📄 License](#-license)
 
 ## 🎯 Overview
@@ -287,7 +288,9 @@ python tests/test_lb.py
 
 ### B) Orchestration
 
-**Implementation**: Docker Compose with multi-service orchestration and scaling
+**Implementation**: Docker Compose for service orchestration + Apache Airflow for ML pipeline orchestration
+
+#### 1. Service Orchestration (Docker Compose)
 
 **Features**:
 - **3 replicas** of the API service for high availability
@@ -314,6 +317,76 @@ docker compose logs -f titanic-api
 docker compose down
 ```
 
+#### 2. ML Pipeline Orchestration (Apache Airflow)
+
+**Implementation**: Airflow DAG for automated model training and validation workflows
+
+**Features**:
+- **Automated training pipeline** with dependency management
+- **Task orchestration** (data fetch → train → validate)
+- **Retry logic** and error handling
+- **MLflow integration** for experiment tracking
+- **Web UI** for monitoring and manual triggering
+
+**Training Pipeline DAG** (`pipelines/titanic_training_dag.py`):
+```
+┌─────────────┐
+│ fetch_data  │  ← Load Titanic dataset from seaborn
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ train_task  │  ← Train model with hyperparameters
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│validate_task│  ← Validate model accuracy
+└─────────────┘
+```
+
+**Start Airflow**:
+```bash
+# Start Airflow services (webserver + scheduler)
+docker-compose -f docker-compose.airflow.yaml up -d
+
+# Check status
+docker-compose -f docker-compose.airflow.yaml ps
+
+# View logs
+docker-compose -f docker-compose.airflow.yaml logs -f airflow-webserver
+```
+
+**Access Airflow UI**:
+- **URL**: http://localhost:8080
+- **Username**: `admin`
+- **Password**: `admin`
+
+**Run Training Pipeline**:
+1. Navigate to http://localhost:8080
+2. Find DAG: `titanic_training_pipeline`
+3. Toggle DAG to "On" (if paused)
+4. Click ▶️ "Trigger DAG" to start training
+5. Monitor execution in Graph/Grid view
+6. Check task logs for training metrics
+
+**Pipeline Configuration**:
+- **Schedule**: Manual trigger only (on-demand training)
+- **Retries**: 1 retry with 1-minute delay
+- **Timeout**: 10 minutes per task
+- **Tags**: `mlops`, `titanic`
+
+**Airflow Environment**:
+- **Executor**: SequentialExecutor (suitable for single-node)
+- **Database**: SQLite (local metadata storage)
+- **Python**: 3.11 (matches production environment)
+- **MLflow**: Integrated for experiment tracking
+
+**Stop Airflow**:
+```bash
+docker-compose -f docker-compose.airflow.yaml down
+```
+
 **Optional: Kubernetes Deployment** (for production environments)
 
 If you have a Kubernetes cluster available (Docker Desktop K8s, kind, minikube, or cloud):
@@ -322,58 +395,43 @@ If you have a Kubernetes cluster available (Docker Desktop K8s, kind, minikube, 
 ```bash
 # Ensure you're using the correct cluster context
 kubectl config get-contexts
-
-# Switch to docker-desktop (if using Docker Desktop)
-kubectl config use-context docker-desktop
-
-# Or switch to your preferred cluster
-kubectl config use-context <your-cluster-name>
-
-# Verify cluster is ready
+kubectl config use-context docker-desktop  # Or your cluster name
 kubectl get nodes
 ```
 
 **Deployment Steps**:
 ```bash
-# 1. Build and verify image (for local clusters)
+# 1. Build image
 docker build -t titanic-predictor:latest .
-docker images | grep titanic-predictor
 
 # 2. Create namespace
 kubectl apply -f deploy/k8s/namespace.yaml
 
-# 3. Deploy PostgreSQL using Helm
+# 3. Deploy PostgreSQL (Windows PowerShell)
 helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-
-# Windows PowerShell:
 helm install postgres bitnami/postgresql -n mlops-dev `
   --set auth.postgresPassword=postgres `
   --set auth.database=mlops
 
-# Linux/Mac:
-helm install postgres bitnami/postgresql -n mlops-dev \
-  --set auth.postgresPassword=postgres,auth.database=mlops
-
-# 4. Wait for PostgreSQL to be ready
+# Wait for PostgreSQL
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql -n mlops-dev --timeout=300s
 
-# 5. Deploy application
+# 4. Deploy application
 kubectl apply -f deploy/k8s/deployment.yaml
 kubectl apply -f deploy/k8s/service.yaml
 
-# 6. Verify deployment
+# 5. Verify deployment
 kubectl get pods -n mlops-dev
 kubectl get svc -n mlops-dev
 
-# 7. Access the application (port forward)
-kubectl port-forward svc/titanic-predictor-svc 8000:8000 -n mlops-dev
+# 6. Access via NodePort (localhost:30800)
+curl http://localhost:30800/healthz
 ```
 
 **Test the Kubernetes deployment**:
 ```powershell
-# In a new terminal - Health check
-curl http://localhost:8000/healthz
+# Health check via NodePort
+curl http://localhost:30800/healthz
 
 # Make prediction - Third-class male passenger (low survival probability)
 $body = @{
@@ -386,7 +444,7 @@ $body = @{
     embarked="S"
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -ContentType "application/json"
+Invoke-RestMethod -Uri http://localhost:30800/predict -Method Post -Body $body -ContentType "application/json"
 
 # Expected output:
 # {
@@ -396,6 +454,9 @@ Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post -Body $body -C
 #   "model_version": "v20251114_174012",
 #   "pod_name": "titanic-predictor-xyz"
 # }
+
+# Test load balancing across 3 pods
+python tests/test_lb.py --url http://localhost:30800
 ```
 
 **Kubernetes Features**:
@@ -494,20 +555,50 @@ curl http://localhost:8000/metrics
 **Optional: Deploy monitoring stack** (requires Kubernetes cluster)
 
 ```bash
-# Install Prometheus
-helm install prometheus prometheus-community/prometheus \
-  -n mlops-dev -f deploy/monitoring/prometheus-values.yaml
+# Add Helm repositories
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
 
-# Install Grafana
-helm install grafana grafana/grafana \
-  -n mlops-dev -f deploy/monitoring/grafana-values.yaml
+# Install Prometheus (Windows PowerShell)
+helm install prometheus prometheus-community/prometheus -n mlops-dev `
+  --set server.service.type=ClusterIP
 
-# Get Grafana password
-kubectl get secret grafana -n mlops-dev -o jsonpath="{.data.admin-password}" | base64 --decode
+# Install Grafana with NodePort access (Windows PowerShell)
+helm install grafana grafana/grafana -n mlops-dev `
+  --set service.type=NodePort `
+  --set service.nodePort=30300 `
+  --set image.tag=10.4.0 `
+  --set persistence.enabled=false
 
-# Port forward
-kubectl port-forward svc/grafana 3000:80 -n mlops-dev
+# Get Grafana admin password
+kubectl get secret grafana -n mlops-dev -o jsonpath="{.data.admin-password}" | ForEach-Object { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($_)) }
+
+# Access Grafana at http://localhost:30300
+# Username: admin, Password: (from command above)
+
+# Configure Prometheus datasource in Grafana
+# 1. Login to Grafana at http://localhost:30300
+# 2. Navigate to Connections > Data Sources > Add data source
+# 3. Select Prometheus
+# 4. Set URL: http://prometheus-server.mlops-dev.svc.cluster.local
+# 5. Click "Save & Test"
 ```
+
+**Note**: The deployment includes Prometheus scraping annotations:
+```yaml
+prometheus.io/scrape: "true"
+prometheus.io/port: "8000"
+prometheus.io/path: "/metrics"
+```
+
+**Available Metrics**:
+- `http_requests_total` - Total HTTP requests by endpoint
+- `http_request_duration_seconds` - Request latency histogram
+- `model_predictions_total` - Predictions by outcome (survived/died)
+- `model_prediction_duration_seconds` - Model inference latency
+- `process_cpu_seconds_total` - Process CPU usage
+- `process_resident_memory_bytes` - Memory usage
 
 **Dashboard**: Import `dashboards/titanic-dashboard.json` to visualize:
 - Request rate and latency

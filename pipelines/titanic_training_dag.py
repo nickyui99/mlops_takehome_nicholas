@@ -2,13 +2,6 @@
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from pathlib import Path
-import sys
-
-# Add /train to path so we can import train.py
-sys.path.insert(0, str(Path(__file__).parent.parent / "train"))
-
-from train import train_model  # your existing function
 
 DAG_ID = "titanic_training_pipeline"
 
@@ -64,16 +57,15 @@ with DAG(
         return run_id
 
     def evaluate_task(**context):
-        # Isolate MLflow operations in subprocess to avoid log processing issues
+        """Evaluate model performance from MLflow."""
         import subprocess
         import sys
         
         run_id = context["task_instance"].xcom_pull(task_ids="train_model", key="run_id")
         print(f"Evaluating run: {run_id}")
         
-        # Run evaluation in subprocess
-        result = subprocess.run(
-            [sys.executable, "-c", f"""
+        # Build the code string without f-strings to avoid nesting issues
+        eval_code = """
 import sys
 sys.path.insert(0, '/opt/airflow/train')
 import mlflow
@@ -82,10 +74,13 @@ logging.getLogger('mlflow').setLevel(logging.CRITICAL)
 logging.getLogger('alembic').setLevel(logging.CRITICAL)
 
 mlflow.set_tracking_uri('sqlite:///mlflow.db')
-run = mlflow.get_run('{run_id}')
+run = mlflow.get_run('""" + run_id + """')
 accuracy = run.data.metrics.get('accuracy')
 print(accuracy if accuracy is not None else 'None', end='')
-"""],
+"""
+        
+        result = subprocess.run(
+            [sys.executable, "-c", eval_code],
             capture_output=True,
             text=True,
             cwd="/opt/airflow"
@@ -108,15 +103,14 @@ print(accuracy if accuracy is not None else 'None', end='')
         return "passed"
 
     def register_model_task(**context):
-        # Isolate MLflow operations in subprocess to avoid log processing issues
+        """Register model in MLflow model registry."""
         import subprocess
         import sys
         
         run_id = context["task_instance"].xcom_pull(task_ids="train_model", key="run_id")
         
-        # Run model registration in subprocess
-        result = subprocess.run(
-            [sys.executable, "-c", f"""
+        # Build the code string without f-strings to avoid nesting issues
+        register_code = """
 import sys
 sys.path.insert(0, '/opt/airflow/train')
 import mlflow
@@ -127,10 +121,13 @@ logging.getLogger('alembic').setLevel(logging.CRITICAL)
 mlflow.set_tracking_uri('sqlite:///mlflow.db')
 mlflow.set_registry_uri('sqlite:///mlflow.db')
 
-model_uri = f'runs:/{run_id}/model'
+model_uri = 'runs:/""" + run_id + """/model'
 mlflow.register_model(model_uri, 'titanic-classifier')
-print('success', end='')"""
-""".replace('{run_id}', run_id)],
+print('success', end='')
+"""
+        
+        result = subprocess.run(
+            [sys.executable, "-c", register_code],
             capture_output=True,
             text=True,
             cwd="/opt/airflow"

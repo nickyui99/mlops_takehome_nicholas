@@ -1,4 +1,3 @@
-# .github/workflows/deploy-dev.yml
 name: Deploy to Dev
 
 on:
@@ -18,79 +17,99 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Convert repository name to lowercase
-      id: repo
-      run: echo "repo_lowercase=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+    - name: Validate Kubernetes manifests exist
+      run: |
+        echo "✅ Checking Kubernetes manifest files..."
+        
+        if [ -f "deploy/k8s/namespace.yaml" ]; then
+          echo "✅ namespace.yaml exists"
+        else
+          echo "❌ namespace.yaml not found"
+          exit 1
+        fi
+        
+        if [ -f "deploy/k8s/deployment.yaml" ]; then
+          echo "✅ deployment.yaml exists"
+        else
+          echo "❌ deployment.yaml not found"
+          exit 1
+        fi
+        
+        if [ -f "deploy/k8s/service.yaml" ]; then
+          echo "✅ service.yaml exists"
+        else
+          echo "❌ service.yaml not found"
+          exit 1
+        fi
+
+    - name: Simulate namespace creation
+      run: |
+        echo "📦 Would create namespace with:"
+        echo "kubectl create namespace mlops-dev --dry-run=client -o yaml"
+        echo ""
+        cat deploy/k8s/namespace.yaml
 
     - name: Simulate deployment to dev
       run: |
-        echo "🚀 Deploying to dev environment"
-        echo "Image: ghcr.io/${{ steps.repo.outputs.repo_lowercase }}:latest"
+        IMAGE_TAG="ghcr.io/${{ github.repository_owner }}/mlops_takehome_nicholas:${{ github.sha }}"
+        echo "🚀 Would deploy to mlops-dev namespace with:"
         echo ""
-        echo "Would execute:"
-        echo "  kubectl apply -f deploy/k8s/namespace.yaml"
-        echo "  kubectl apply -f deploy/k8s/deployment.yaml -n mlops-dev"
-        echo "  kubectl apply -f deploy/k8s/service.yaml -n mlops-dev"
-        echo "  kubectl set image deployment/titanic-predictor titanic-predictor=ghcr.io/${{ steps.repo.outputs.repo_lowercase }}:latest -n mlops-dev"
+        echo "kubectl apply -f deploy/k8s/namespace.yaml"
+        echo "kubectl apply -f deploy/k8s/deployment.yaml -n mlops-dev"
+        echo "kubectl apply -f deploy/k8s/service.yaml -n mlops-dev"
         echo ""
-        echo "Or with Docker Compose:"
-        echo "  docker compose pull"
-        echo "  docker compose up -d --force-recreate"
+        echo "kubectl set image deployment/titanic-predictor \\"
+        echo "  titanic-predictor=$IMAGE_TAG \\"
+        echo "  -n mlops-dev"
+        echo ""
+        echo "kubectl rollout status deployment/titanic-predictor -n mlops-dev --timeout=5m"
 
-    - name: Validate Kubernetes manifests syntax
+    - name: Simulate smoke test - Health check
       run: |
-        echo "📋 Checking Kubernetes manifest files exist..."
-        if [ -f "deploy/k8s/namespace.yaml" ]; then
-          echo "✅ namespace.yaml found"
-        fi
-        if [ -f "deploy/k8s/deployment.yaml" ]; then
-          echo "✅ deployment.yaml found"
-        fi
-        if [ -f "deploy/k8s/service.yaml" ]; then
-          echo "✅ service.yaml found"
-        fi
-        echo "✅ All manifest files present"
+        echo "🏥 Would run health check smoke test:"
+        echo ""
+        echo "kubectl port-forward svc/titanic-predictor 8000:8000 -n mlops-dev &"
+        echo "sleep 5"
+        echo ""
+        echo "response=\$(curl -s -w '%{http_code}' http://localhost:8000/healthz)"
+        echo "if [ \"\$response\" = \"200\" ]; then"
+        echo "  echo '✅ Health check passed'"
+        echo "else"
+        echo "  echo '❌ Health check failed'"
+        echo "  exit 1"
+        echo "fi"
 
-    - name: Smoke test simulation
+    - name: Simulate smoke test - Prediction
       run: |
-        echo "🧪 Simulating smoke tests..."
+        echo "🔮 Would run prediction smoke test:"
         echo ""
-        echo "Health check:"
-        echo "  ✅ curl http://dev-endpoint:8000/healthz"
-        echo "  Response: {\"status\": \"ok\", \"model_version\": \"latest\"}"
+        echo "response=\$(curl -s -X POST http://localhost:8000/predict \\"
+        echo "  -H 'Content-Type: application/json' \\"
+        echo "  -d '{\"pclass\":1,\"sex\":\"female\",\"age\":29,\"sibsp\":0,\"parch\":0,\"fare\":100,\"embarked\":\"C\"}')"
         echo ""
-        echo "Prediction test:"
-        echo "  ✅ curl -X POST http://dev-endpoint:8000/predict -d '{...}'"
-        echo "  Response: {\"prediction\": \"survived\", \"survival_probability\": 0.85}"
-        echo ""
-        echo "Metrics check:"
-        echo "  ✅ curl http://dev-endpoint:8000/metrics"
-        echo "  Prometheus metrics available"
-            exit 0
-          fi
-          echo "⏳ Attempt $i/5 - retrying in 5s..."
-          sleep 5
-        done
-        
-        kill $PF_PID || true
-        exit 1
-
-    - name: Smoke test - Sample Prediction
-      run: |
-        echo "🔮 Running prediction smoke test..."
-        
-        kubectl port-forward svc/titanic-predictor 8000:8000 -n mlops-dev &
-        PF_PID=$!
-        sleep 10
-        
+        echo "if echo \"\$response\" | grep -q \"prediction\"; then"
+        echo "  echo '✅ Prediction endpoint working'"
+        echo "else"
+        echo "  echo '❌ Prediction endpoint failed'"
+        echo "  exit 1"
+        echo "fi"
 
     - name: Deployment summary
       run: |
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "🎉 Deployment to dev completed successfully"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "📦 Image: ghcr.io/${{ steps.repo.outputs.repo_lowercase }}:latest"
-        echo "🌐 Namespace: mlops-dev"
-        echo "✅ Kubernetes manifests: VALIDATED"
-        echo "✅ Smoke tests: PASSED"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "════════════════════════════════════════"
+        echo "✅ Dev Deployment Validation Complete"
+        echo "════════════════════════════════════════"
+        echo ""
+        echo "📦 Image: ghcr.io/${{ github.repository_owner }}/mlops_takehome_nicholas:${{ github.sha }}"
+        echo "🏷️  Namespace: mlops-dev"
+        echo "🚀 Deployment: titanic-predictor"
+        echo "🔗 Service: titanic-predictor (port 8000)"
+        echo ""
+        echo "In production environment, this would:"
+        echo "  1. Create mlops-dev namespace"
+        echo "  2. Deploy application to mlops-dev"
+        echo "  3. Run health check smoke test"
+        echo "  4. Run prediction smoke test"
+        echo "  5. Verify deployment rollout"
+        echo ""
+        echo "════════════════════════════════════════"

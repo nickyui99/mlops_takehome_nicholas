@@ -26,8 +26,6 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
     - [3. Traffic Generation Tests (`tests/test_traffic.py`)](#3-traffic-generation-tests-teststest_trafficpy)
     - [Running All Tests](#running-all-tests)
     - [Test Environment Setup](#test-environment-setup)
-  - [✅ Reproducibility Checklist](#-reproducibility-checklist)
-  - [🔐 Security \& Best Practices](#-security--best-practices)
   - [📝 Notes for Reviewers](#-notes-for-reviewers)
   - [🐛 Troubleshooting](#-troubleshooting)
     - [Common Issues](#common-issues)
@@ -471,7 +469,6 @@ kubectl autoscale deployment titanic-predictor --cpu-percent=80 --min=3 --max=10
 
 ### I) Rollback
 
-✅ **Complete rollback procedures documented** with exact commands for all scenarios.
 
 **Version Management**:
 - Docker images tagged with `latest` and `sha-<commit>`
@@ -546,6 +543,291 @@ kubectl set env deployment/titanic-predictor MODEL_VERSION=1.0 -n mlops-dev
 - Emergency rollback procedures
 - Rollback verification checklist
 - Automated rollback workflows
+
+---
+
+## 🎯 Advanced Deployment Strategies
+
+### Canary Deployment
+
+**Canary deployment** gradually shifts traffic from the stable version to a new version, minimizing risk by exposing only a small percentage of users initially.
+
+#### Quick Start: Canary Deployment
+
+```bash
+# 1. Ensure stable deployment is running (3 replicas)
+kubectl get pods -n mlops-dev -l app=titanic-predictor
+
+# 2. Deploy canary version (1 replica = ~25% traffic with 3 stable pods)
+kubectl apply -f deploy/k8s/canary/deployment-canary.yaml
+
+# 3. Wait for canary to be ready
+kubectl wait --for=condition=ready pod -l version=canary -n mlops-dev --timeout=60s
+
+# 4. Monitor traffic distribution
+kubectl get pods -n mlops-dev -l app=titanic-predictor -o wide
+
+# 5. Generate test traffic
+python tests/test_traffic.py --requests 100
+
+# 6. Monitor metrics in Grafana (http://localhost:3000)
+# - Check error rates by version
+# - Compare latency (p50, p95, p99)
+# - Monitor prediction distribution
+
+# 7. If metrics are good, scale up canary (50% traffic)
+kubectl scale deployment titanic-predictor-canary --replicas=3 -n mlops-dev
+
+# 8. Continue monitoring, then promote to 100%
+kubectl set image deployment/titanic-predictor \
+  titanic-predictor=titanic-predictor:v2.0 -n mlops-dev
+
+# 9. Remove canary deployment
+kubectl delete deployment titanic-predictor-canary -n mlops-dev
+```
+
+#### Canary Rollback (If Issues Detected)
+
+```bash
+# Immediate rollback - scale canary to 0 (< 10 seconds)
+kubectl scale deployment titanic-predictor-canary --replicas=0 -n mlops-dev
+
+# Or delete canary entirely
+kubectl delete deployment titanic-predictor-canary -n mlops-dev
+```
+
+**Traffic Distribution:**
+- **10% Canary**: 1 canary pod + 9 stable pods = 10% traffic
+- **25% Canary**: 1 canary pod + 3 stable pods = 25% traffic (default)
+- **50% Canary**: 3 canary pods + 3 stable pods = 50% traffic
+- **100% Canary**: Update stable deployment, remove canary
+
+**Key Benefits:**
+- ✅ Minimal blast radius (only 10-25% of traffic affected)
+- ✅ Gradual rollout with monitoring at each stage
+- ✅ Data-driven decisions based on real production metrics
+- ✅ Easy rollback by scaling down/deleting canary
+
+---
+
+### Blue-Green Deployment
+
+**Blue-Green deployment** maintains two identical environments. Blue is the current production, Green is the new version. Traffic switches instantly between them.
+
+#### Quick Start: Blue-Green Deployment
+
+```bash
+# 1. Deploy Blue environment (current production v1.0)
+kubectl apply -f deploy/k8s/blue-green/deployment-blue.yaml
+
+# 2. Create service pointing to Blue
+kubectl apply -f deploy/k8s/blue-green/service-blue.yaml
+
+# 3. Verify Blue is serving traffic
+kubectl get pods -n mlops-dev -l version=blue
+kubectl port-forward svc/titanic-predictor 8000:8000 -n mlops-dev
+
+# 4. Test Blue environment
+$body = @{
+    pclass=1; sex="female"; age=29.0
+    sibsp=0; parch=0; fare=100.0; embarked="C"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri http://localhost:8000/predict `
+  -Method Post -Body $body -ContentType "application/json"
+# Should show: "model_version": "1.0", "pod_name": "...-blue-..."
+
+# 5. Deploy Green environment (new version v2.0) in parallel
+kubectl apply -f deploy/k8s/blue-green/deployment-green.yaml
+
+# 6. Wait for Green to be ready
+kubectl wait --for=condition=ready pod -l version=green -n mlops-dev --timeout=120s
+
+# 7. Verify both environments are running
+kubectl get pods -n mlops-dev -l app=titanic-predictor -o wide
+# Should show 3 Blue pods + 3 Green pods (6 total)
+
+# 8. Test Green internally before switching traffic
+kubectl run test-pod --image=curlimages/curl -it --rm -n mlops-dev -- sh
+# Inside test pod:
+curl http://titanic-predictor-green:8000/healthz
+
+# 9. INSTANT CUTOVER: Switch service from Blue to Green (< 5 seconds)
+kubectl patch service titanic-predictor -n mlops-dev \
+  -p '{"spec":{"selector":{"version":"green"}}}'
+
+# 10. Verify traffic switch
+Invoke-RestMethod -Uri http://localhost:8000/predict `
+  -Method Post -Body $body -ContentType "application/json"
+# Should now show: "model_version": "2.0", "pod_name": "...-green-..."
+
+# 11. Monitor Green for stability (15-30 minutes)
+python tests/test_traffic.py --requests 500
+
+# 12. If stable, remove Blue environment
+kubectl delete deployment titanic-predictor-blue -n mlops-dev
+```
+
+#### Blue-Green Rollback (If Issues Detected)
+
+```bash
+# INSTANT ROLLBACK: Switch service back to Blue (< 5 seconds)
+kubectl patch service titanic-predictor -n mlops-dev \
+  -p '{"spec":{"selector":{"version":"blue"}}}'
+
+# Verify rollback
+Invoke-RestMethod -Uri http://localhost:8000/predict `
+  -Method Post -Body $body -ContentType "application/json"
+# Should show: "model_version": "1.0", "pod_name": "...-blue-..."
+```
+
+**Key Benefits:**
+- ✅ Zero-downtime deployment (< 5 seconds cutover)
+- ✅ Instant rollback (< 5 seconds)
+- ✅ Full testing of Green before cutover
+- ✅ No impact on user experience during switch
+
+**Resource Requirements:**
+- **During Deployment**: 2x pods (both Blue and Green running)
+- **After Cleanup**: 1x pods (only active environment)
+
+---
+
+### Strategy Comparison
+
+| Feature | **Canary** | **Blue-Green** |
+|---------|-----------|---------------|
+| **Traffic Shift** | Gradual (10%→25%→50%→100%) | Instant (0%→100%) |
+| **Rollback Speed** | ~10 seconds | ~5 seconds |
+| **Resource Usage** | 1.1-1.5x pods | 2x pods (during switch) |
+| **Risk Level** | Very Low (minimal blast radius) | Low (all-or-nothing) |
+| **Monitoring Time** | Extended (hours) | Quick (minutes) |
+| **Best For** | High-risk changes, new features | Confident releases, hotfixes |
+| **Complexity** | Medium | Low |
+
+**When to Use:**
+- **Canary**: Major model changes, new algorithms, uncertain deployments
+- **Blue-Green**: Hotfixes, well-tested releases, infrastructure updates
+
+---
+
+### Deployment Workflow Recommendations
+
+#### Production Deployment Pipeline
+
+```
+1. CI/CD Pipeline Triggers
+   ├─ Run unit tests
+   ├─ Build Docker image
+   ├─ Push to registry
+   └─ Trigger deployment
+
+2. Choose Deployment Strategy
+   ├─ High Risk → Canary (10%→50%→100%)
+   └─ Low Risk  → Blue-Green (instant cutover)
+
+3. Deploy & Monitor
+   ├─ Check health endpoints
+   ├─ Monitor error rates
+   ├─ Compare latency metrics
+   └─ Verify prediction quality
+
+4. Decision Point
+   ├─ Metrics Good → Proceed to 100%
+   └─ Issues Found → Rollback immediately
+
+5. Cleanup
+   └─ Remove old deployments/canary pods
+```
+
+#### Automated Rollback Triggers
+
+Set up automated rollback based on:
+- ❌ Error rate > 5% for 5 minutes
+- ❌ Latency p95 > 100ms for 10 minutes
+- ❌ Health check failures > 3 consecutive
+- ❌ Prediction anomalies detected
+
+**Example Prometheus Alert:**
+```yaml
+groups:
+- name: deployment_alerts
+  rules:
+  - alert: HighErrorRate
+    expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+    for: 5m
+    annotations:
+      summary: "High error rate detected - trigger rollback"
+```
+
+---
+
+### Complete Demo Scripts
+
+#### Full Canary Deployment Demo
+```bash
+# deploy/k8s/canary/demo-canary.sh
+#!/bin/bash
+set -e
+
+echo "🚀 Starting Canary Deployment Demo"
+
+# 1. Baseline
+echo "📊 Current stable deployment:"
+kubectl get pods -n mlops-dev -l app=titanic-predictor
+
+# 2. Deploy canary (25% traffic)
+echo "🐤 Deploying canary (1 pod = 25% traffic)..."
+kubectl apply -f deploy/k8s/canary/deployment-canary.yaml
+kubectl wait --for=condition=ready pod -l version=canary -n mlops-dev --timeout=60s
+
+# 3. Generate traffic
+echo "🔄 Generating test traffic..."
+python tests/test_traffic.py --requests 100 --quiet
+
+# 4. Check distribution
+echo "📈 Pod distribution:"
+kubectl get pods -n mlops-dev -l app=titanic-predictor
+
+echo "✅ Canary deployed! Monitor Grafana at http://localhost:3000"
+echo "Next: Scale to 50% with: kubectl scale deployment titanic-predictor-canary --replicas=3 -n mlops-dev"
+```
+
+#### Full Blue-Green Deployment Demo
+```bash
+# deploy/k8s/blue-green/demo-blue-green.sh
+#!/bin/bash
+set -e
+
+echo "🚀 Starting Blue-Green Deployment Demo"
+
+# 1. Deploy Blue
+echo "🔵 Deploying Blue environment (v1.0)..."
+kubectl apply -f deploy/k8s/blue-green/deployment-blue.yaml
+kubectl apply -f deploy/k8s/blue-green/service-blue.yaml
+kubectl wait --for=condition=ready pod -l version=blue -n mlops-dev --timeout=60s
+
+# 2. Deploy Green
+echo "🟢 Deploying Green environment (v2.0)..."
+kubectl apply -f deploy/k8s/blue-green/deployment-green.yaml
+kubectl wait --for=condition=ready pod -l version=green -n mlops-dev --timeout=120s
+
+# 3. Show both environments
+echo "📊 Both environments running:"
+kubectl get pods -n mlops-dev -l app=titanic-predictor -o wide
+
+# 4. Switch to Green
+echo "🔀 Switching traffic to Green..."
+kubectl patch service titanic-predictor -n mlops-dev \
+  -p '{"spec":{"selector":{"version":"green"}}}'
+
+echo "✅ Traffic switched to Green! Test at http://localhost:8000/predict"
+echo "Rollback command: kubectl patch service titanic-predictor -n mlops-dev -p '{\"spec\":{\"selector\":{\"version\":\"blue\"}}}'"
+```
+
+---
+
+📺 **For detailed video demo guide, see [VIDEO_DEMO_GUIDE.md](VIDEO_DEMO_GUIDE.md)**
 
 ## 🧪 Testing
 
@@ -751,26 +1033,6 @@ docker compose down -v
 **Built with**: Python, FastAPI, MLflow, scikit-learn, Docker, Kubernetes, Prometheus, Grafana, PostgreSQL, NGINX
 
 **Repository**: https://github.com/nickyui99/mlops_takehome_nicholas
-
-## ✅ Reproducibility Checklist
-
-- [x] **Code versioned**: Git repository with commit history
-- [x] **Environment captured**: `requirements.txt` + `Dockerfile`
-- [x] **Data versioned**: Titanic dataset versioned via seaborn package (pinned in requirements)
-- [x] **Random seeds fixed**: `random_state=42` in training script
-- [x] **Metrics logged**: MLflow tracks accuracy and all parameters
-- [x] **Artifacts stored**: Models saved to `artifacts/` and MLflow registry
-- [x] **CI validates**: GitHub Actions runs tests on every commit
-- [x] **Model card**: Documentation in `MODEL_CARD.md`
-
-## 🔐 Security & Best Practices
-
-- ✅ Non-root user in Docker container
-- ✅ Input validation with Pydantic
-- ✅ Resource limits in Kubernetes
-- ✅ Secrets management via environment variables
-- ✅ Structured logging (no sensitive data in logs)
-- ⚠️ **TODO**: Move DB credentials to K8s secrets for production
 
 ## 📝 Notes for Reviewers
 

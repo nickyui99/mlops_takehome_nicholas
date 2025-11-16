@@ -128,8 +128,7 @@ def train_model(n_estimators=100, max_depth=10, min_samples_split=5, version="1.
         # Log model to MLflow
         mlflow.sklearn.log_model(
             model, 
-            "model",
-            registered_model_name="titanic-classifier"
+            "model"
         )
         
         # Save model artifacts locally

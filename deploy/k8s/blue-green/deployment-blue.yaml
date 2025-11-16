@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
       - name: titanic-predictor
-        image: ghcr.io/nickyui99/titanic-predictor:v1.0  # Blue version (current production)
+        image: titanic-predictor:v1.0  # Blue version (local image)
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
@@ -37,7 +37,7 @@ spec:
         - name: MODEL_VERSION
           value: "1.0"
         - name: MLFLOW_TRACKING_URI
-          value: "http://mlflow:5000"
+          value: "sqlite:///mlflow.db"
         - name: DEPLOYMENT_TYPE
           value: "blue"
         - name: DEPLOYMENT_COLOR

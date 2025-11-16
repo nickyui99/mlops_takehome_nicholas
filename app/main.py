@@ -60,17 +60,29 @@ async def lifespan(app: FastAPI):
         # Extract version from metadata
         model_version = model_metadata.get("model_version", "unknown")
         
-        # Log model metadata to MLflow
-        mlflow.log_param("pod_name", POD_NAME)
-        mlflow.log_param("model_version", model_version)
-        mlflow.log_param("model_name", os.getenv("MODEL_NAME", "titanic-classifier"))
-        mlflow.log_dict(model_metadata, "model_metadata.json")
+        # Log model metadata to MLflow (with error handling)
+        try:
+            mlflow.log_param("pod_name", POD_NAME)
+            mlflow.log_param("model_version", model_version)
+            mlflow.log_param("model_name", os.getenv("MODEL_NAME", "titanic-classifier"))
+            # Log metadata as text instead of dict to avoid permission issues
+            import json
+            metadata_str = json.dumps(model_metadata, indent=2)
+            mlflow.log_text(metadata_str, "model_metadata.txt")
+        except Exception as e:
+            logger.warning(f"Failed to log to MLflow: {e}", error=str(e))
+            print(f"⚠️  MLflow logging failed (non-critical): {e}")
         
         logger.info(f"✅ Model loaded. Version: {model_version}", 
                    model_version=model_version, 
                    mlflow_run_id=mlflow_run_id)
         print(f"✅ Model loaded. Version: {model_version}")
-    yield
+        
+        yield
+    finally:
+        # End MLflow run when service shuts down
+        mlflow.end_run()
+        logger.info("MLflow run ended")
 
 app = FastAPI(lifespan=lifespan)
 

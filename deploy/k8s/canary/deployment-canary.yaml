@@ -24,8 +24,8 @@ spec:
     spec:
       containers:
       - name: titanic-predictor
-        image: ghcr.io/nickyui99/titanic-predictor:v2.0  # New canary version
-        imagePullPolicy: Always  # Always pull new version
+        image: titanic-predictor:v2.0  # New canary version (local image)
+        imagePullPolicy: IfNotPresent  # Use local image for demo
         ports:
         - containerPort: 8000
           name: http
@@ -37,7 +37,7 @@ spec:
         - name: MODEL_VERSION
           value: "2.0"  # New model version
         - name: MLFLOW_TRACKING_URI
-          value: "http://mlflow:5000"
+          value: "sqlite:///mlflow.db"  # Use local sqlite for demo
         - name: DEPLOYMENT_TYPE
           value: "canary"
         resources:

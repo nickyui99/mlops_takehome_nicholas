@@ -27,7 +27,17 @@ spec:
           name: http
         env:
         - name: DB_HOST
-          value: "postgres-postgresql.mlops-dev.svc.cluster.local"
+          value: "host.docker.internal"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "mlops"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          value: "postgres"
+        - name: MLFLOW_TRACKING_URI
+          value: "http://host.docker.internal:5000"
         - name: MODEL_NAME
           value: "titanic-classifier"
         - name: MODEL_VERSION

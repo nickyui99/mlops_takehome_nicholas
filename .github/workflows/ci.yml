@@ -31,8 +31,8 @@ jobs:
     - name: Install dependencies
       run: |
         pip install --upgrade pip
-        pip install pytest ruff
-        pip install fastapi uvicorn scikit-learn joblib pydantic mlflow prometheus_client structlog pandas numpy
+        pip install -r requirements.txt
+        pip install pytest pytest-cov ruff httpx
 
     - name: Lint with ruff
       run: |

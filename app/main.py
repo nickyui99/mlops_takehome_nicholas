@@ -43,25 +43,15 @@ mlflow_run_id = None
 async def lifespan(app: FastAPI):
     global model, model_version, model_metadata, mlflow_run_id
 
-    # Configure MLflow with error handling
-    try:
-        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-        logger.info(f"MLflow tracking URI: {MLFLOW_TRACKING_URI}")
-        
-        # Try to set experiment (may fail if MLflow server not ready)
-        mlflow.set_experiment("titanic-classifier-serving")
-        
-        # Start MLflow run for this service instance
-        mlflow_run = mlflow.start_run(run_name=f"serving-{POD_NAME}")
-        mlflow_run_id = mlflow_run.info.run_id
-        logger.info(f"✅ MLflow tracking initialized", mlflow_run_id=mlflow_run_id)
-    except Exception as e:
-        logger.warning(f"MLflow tracking unavailable (non-critical): {e}", error=str(e))
-        print(f"⚠️  MLflow tracking unavailable: {e}")
-        mlflow_run_id = None
+    # Skip MLflow tracking entirely during startup - it's causing hangs
+    mlflow_run_id = None
+    print("⚠️  MLflow tracking disabled during startup to prevent hangs")
+    logger.info(f"MLflow tracking URI: {MLFLOW_TRACKING_URI}")
     
     try:
+        print("✅ Database initialized")
         init_db()
+        print("📦 Loading model...")
         model, model_metadata = load_model()
 
         # Extract version from metadata

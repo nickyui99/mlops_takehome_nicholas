@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: titanic-predictor
+  namespace: mlops-dev
 spec:
   replicas: 3
   selector:
@@ -11,7 +12,6 @@ spec:
     metadata:
       labels:
         app: titanic-predictor
-      # ✅ ADD PROMETHEUS ANNOTATIONS HERE
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
@@ -26,7 +26,7 @@ spec:
           name: http
         env:
         - name: DB_HOST
-          value: "host.docker.internal"
+          value: "postgres"
         - name: DB_PORT
           value: "5432"
         - name: DB_NAME
@@ -36,7 +36,7 @@ spec:
         - name: DB_PASSWORD
           value: "postgres"
         - name: MLFLOW_TRACKING_URI
-          value: "http://host.docker.internal:5000"
+          value: "http://mlflow:5000"
         - name: MODEL_NAME
           value: "titanic-classifier"
         - name: MODEL_VERSION
@@ -48,15 +48,3 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8000
-          initialDelaySeconds: 10
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 5

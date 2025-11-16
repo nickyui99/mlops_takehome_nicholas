@@ -2,7 +2,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: titanic-predictor-canary
-  namespace: mlops-dev
   annotations:
     # Enable canary deployment
     nginx.ingress.kubernetes.io/canary: "true"
@@ -29,7 +28,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: titanic-predictor-stable
-  namespace: mlops-dev
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:

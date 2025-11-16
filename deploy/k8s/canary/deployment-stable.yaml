@@ -1,8 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: titanic-predictor-stable
-  namespace: mlops-dev
+  name: titanic-predictor
   labels:
     app: titanic-predictor
     version: stable

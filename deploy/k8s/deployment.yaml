@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: titanic-predictor
-  namespace: mlops-dev
 spec:
   replicas: 3
   selector:

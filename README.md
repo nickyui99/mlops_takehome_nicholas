@@ -425,14 +425,19 @@ Triggers: push to main/develop, pull requests
 **Status**: [![CI/CD Pipeline](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/ci.yml)
 
 #### 2. **Deploy to Dev** (`.github/workflows/deploy-dev.yml`)
-Automated deployment after successful CI build:
+Automated deployment validation after successful CI build:
 
 ```yaml
 Triggers: After CI/CD Pipeline succeeds on main
-├─ Validate K8s manifests
-├─ Simulate dev deployment
-└─ Run smoke tests (health + prediction)
+├─ Validate K8s manifest files exist
+├─ Simulate namespace creation (mlops-dev)
+├─ Simulate deployment with image tag
+│  └─ kubectl apply -n mlops-dev
+├─ Simulate health check smoke test
+└─ Simulate prediction smoke test
 ```
+
+**Note**: This workflow simulates deployment commands without requiring an actual Kubernetes cluster. In production, replace simulation steps with real kubectl commands.
 
 **Status**: [![Deploy to Dev](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml/badge.svg)](https://github.com/nickyui99/mlops_takehome_nicholas/actions/workflows/deploy-dev.yml)
 

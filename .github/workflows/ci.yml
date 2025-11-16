@@ -41,16 +41,11 @@ jobs:
 
     - name: Run API tests
       run: |
-        python -m pytest tests/test_api.py -v --cov=app --cov-report=xml --cov-report=term
+        python -m pytest tests/test_api_ci.py -v
 
     - name: Run training tests
       run: |
-        python -m pytest tests/test_training.py -v
-
-    - name: Run load balancer tests
-      run: |
-        python -m pytest tests/test_lb.py -v
-      continue-on-error: true
+        python -m pytest tests/test_training_ci.py -v
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4

@@ -36,3 +36,34 @@ latest_run_id.txt
 .env.*
 *.env
 !.env.example
+
+# Virtualenvs / environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.cache/
+
+# Node / JS packages (if present)
+node_modules/
+
+# Generic packages folder (some projects put dependencies here)
+packages/
+
+# Compiled extensions
+*.so
+
+# Local Python version file
+.python-version

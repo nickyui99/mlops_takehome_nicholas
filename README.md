@@ -189,14 +189,8 @@ mlops_takehome_nicholas/
 ├── nginx.conf                  # NGINX load balancer config
 ├── requirements.txt            # Python dependencies
 │
-├── .github/workflows/          # CI/CD pipelines
-│   ├── ci.yml                  # Main CI/CD workflow (lint, test, build, push to GHCR)
-│   ├── deploy-dev.yml          # Dev deployment simulation (validates manifests)
-│   └── promote-prod.yml        # Prod promotion simulation (canary/blue-green strategies)
-│
 ├── MODEL_CARD.md               # Model documentation
 ├── README.md                   # Main documentation (this file)
-└── VIDEO_DEMO_GUIDE.md         # Video demonstration guide
 ```
 
 **Key Directory Purposes**:

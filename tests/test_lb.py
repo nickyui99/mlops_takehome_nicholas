@@ -4,12 +4,16 @@ For Kubernetes testing with proper load balancing verification, use test_lb_prop
 """
 import requests
 from collections import Counter
+import argparse
 
-# For Docker Compose (NGINX load balancer)
-url = "http://localhost:8000/predict"
+# CLI so you can override the target URL when running the script
+parser = argparse.ArgumentParser(description="Simple load balancer test for Docker Compose environment")
+parser.add_argument("--url", default="http://localhost:8000/predict", help="Full URL to the predict endpoint")
+args = parser.parse_args()
+url = args.url
 
-# For Kubernetes NodePort (uncomment to test K8s)
-# url = "http://localhost:30800/predict"
+# Example alternate URL for Kubernetes NodePort (keep here for reference)
+# example: --url http://localhost:30800/predict
 
 data = {
     "pclass": 1,

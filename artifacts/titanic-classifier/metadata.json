@@ -1,7 +1,7 @@
 {
-  "model_version": "1.0",
-  "mlflow_run_id": "79f2e4a8e8e44ec6b59ae592c73f540f",
-  "model_path": "C:\\Test3\\mlops_takehome_nicholas\\artifacts\\titanic-classifier",
+  "model_version": "2.0",
+  "mlflow_run_id": "120921dc27d04afcabbdb6636c7b9881",
+  "model_path": "C:\\Test4\\mlops_takehome_nicholas\\artifacts\\titanic-classifier",
   "n_estimators": 100,
   "max_depth": 10,
   "test_accuracy": 0.54375,

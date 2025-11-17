@@ -12,3 +12,5 @@ structlog
 seaborn
 pandas
 numpy
+pytest
+requests

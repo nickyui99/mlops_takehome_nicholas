@@ -20,16 +20,19 @@ Production-ready ML system demonstrating end-to-end MLOps practices with load ba
   - [✅ Required Capabilities](#-required-capabilities)
     - [A) Load Balancer (must-have)](#a-load-balancer-must-have)
     - [B) Orchestration](#b-orchestration)
+      - [1. Service Orchestration (Docker Compose)](#1-service-orchestration-docker-compose)
+      - [2. ML Pipeline Orchestration (Apache Airflow)](#2-ml-pipeline-orchestration-apache-airflow)
     - [C) CI/CD (GitHub Actions)](#c-cicd-github-actions)
       - [1. **CI/CD Pipeline** (`.github/workflows/ci.yml`)](#1-cicd-pipeline-githubworkflowsciyml)
       - [2. **Deploy to Dev** (`.github/workflows/deploy-dev.yml`)](#2-deploy-to-dev-githubworkflowsdeploy-devyml)
       - [3. **Promote to Production** (`.github/workflows/promote-prod.yml`)](#3-promote-to-production-githubworkflowspromote-prodyml)
     - [D) Observability (Grafana + Prometheus)](#d-observability-grafana--prometheus)
-    - [E) Model Tracking / Monitoring](#e-model-tracking--monitoring)
-    - [F) Traffic \& Security](#f-traffic--security)
-    - [G) State \& Metadata](#g-state--metadata)
-    - [H) Cost \& Scalability](#h-cost--scalability)
-    - [I) Rollback](#i-rollback)
+    - [Grafana Dashboard Example](#grafana-dashboard-example)
+  - [E) Model Tracking / Monitoring](#e-model-tracking--monitoring)
+  - [F) Traffic \& Security](#f-traffic--security)
+  - [G) State \& Metadata](#g-state--metadata)
+  - [H) Cost \& Scalability](#h-cost--scalability)
+  - [I) Rollback](#i-rollback)
   - [🎯 Advanced Deployment Strategies](#-advanced-deployment-strategies)
     - [Canary Deployment](#canary-deployment)
       - [Quick Start: Canary Deployment](#quick-start-canary-deployment)
@@ -543,7 +546,6 @@ helm install prometheus prometheus-community/prometheus -n mlops-dev `
 helm install grafana grafana/grafana -n mlops-dev `
   --set service.type=NodePort `
   --set service.nodePort=30300 `
-  --set image.tag=10.4.0 `
   --set persistence.enabled=false
 
 # Get Grafana admin password
